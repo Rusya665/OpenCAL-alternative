@@ -1,12 +1,16 @@
 import time
 from typing import final
 
-from pi5neo.pi5neo import Pi5Neo, EPixelType
+try:
+    from pi5neo.pi5neo import Pi5Neo, EPixelType
+    HAS_PI5NEO = True
+except (ImportError, ModuleNotFoundError):
+    Pi5Neo = None
+    EPixelType = None
+    HAS_PI5NEO = False
 
 from opencal.utils.config import LedArrayConfig
 
-# SK6812 RGBW byte order: (G, R, B, W)
-# All channels capped at 240 to prevent W-LED crosstalk bleed at full drive.
 RED    = (0,   240, 0,   0)
 GREEN  = (240, 0,   0,   0)
 BLUE   = (0,   0,   240, 0)
@@ -21,8 +25,16 @@ class LEDManager:
         self.num_led: int = config.num_led
         self.default_color: tuple[int, int, int, int] = config.default_color
 
-        self.neo: Pi5Neo = Pi5Neo("/dev/spidev0.0", self.num_led, 800, pixel_type=EPixelType.RGBW)
-        self.clear_leds()
+        if HAS_PI5NEO:
+            try:
+                self.neo = Pi5Neo("/dev/spidev0.0", self.num_led, 800, pixel_type=EPixelType.RGBW)
+                self.clear_leds()
+            except Exception as e:
+                self.neo = None
+                print(f"WARNING: Could not init Pi5Neo: {e}")
+        else:
+            self.neo = None
+            print("WARNING: Pi5Neo library not available, LED array disabled.")
 
     def set_led(
         self,
@@ -30,7 +42,8 @@ class LEDManager:
         led_index: list[int] | None = None,
         update: bool = True,
     ):
-        """Set LEDs to a color. color = (G, R, B, W) per SK6812 RGBW byte order."""
+        if not self.neo:
+            return
         if led_index is None:
             self.neo.fill_strip(*color)
         else:
@@ -40,11 +53,14 @@ class LEDManager:
             self.neo.update_strip()
 
     def clear_leds(self):
-        """Turn off all LEDs."""
+        if not self.neo:
+            return
         self.neo.clear_strip()
         self.neo.update_strip()
 
     def run_start_animation(self):
+        if not self.neo:
+            return
         CYCLES = 5
         DELAY = 0.5
         ROWS, COLS = 8, 8
@@ -71,19 +87,3 @@ class LEDManager:
             time.sleep(DELAY)
 
         self.clear_leds()
-
-
-if __name__ == "__main__":
-    from opencal.utils.config import Config
-
-    cfg = Config()
-    led_array = LEDManager(cfg.led_array)
-
-    try:
-        led_array.clear_leds()
-        time.sleep(1)
-        led_array.set_led(RED)
-        time.sleep(10)
-        led_array.clear_leds()
-    except Exception as e:
-        print(f"An error occurred during the test: {e}")
