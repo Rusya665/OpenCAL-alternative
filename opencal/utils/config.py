@@ -101,10 +101,13 @@ class LedArrayConfig:
 
 class LcdDisplayConfig:
     def __init__(self, config: dict[str, Any]):
-        self.port: str = config["port"]
+        self.port: str = str(config["port"])
         self.address: str = config["address"]
         self.cols: int = config["cols"]
         self.rows: int = config["rows"]
+        self.type: str = config.get("type", "newhaven" if str(config["address"]) in ("0x28", "40") or str(config["port"]).isdigit() else "pcf8574")
+        self.contrast: int = config.get("contrast", 40)
+        self.backlight: int = config.get("backlight", 8)
 
 
 class RotaryConfig:

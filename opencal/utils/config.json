@@ -29,17 +29,28 @@
     "index": 0,
     "save_path": "/home/opencal/opencal/OpenCAL/utils/prints",
     "awb_enable": false,
-    "colour_gains": [2.0, 1.8]
+    "colour_gains": [
+      2.0,
+      1.8
+    ]
   },
   "led_array": {
     "num_led": 64,
-    "default_color": [0, 240, 0, 0]
+    "default_color": [
+      0,
+      240,
+      0,
+      0
+    ]
   },
   "lcd_display": {
-    "port": "PCF8574",
-    "address": "0x27",
+    "type": "newhaven",
+    "port": "1",
+    "address": "0x28",
     "cols": 20,
-    "rows": 4
+    "rows": 4,
+    "contrast": 40,
+    "backlight": 8
   },
   "rotary_encoder": {
     "clk_pin": 5,
