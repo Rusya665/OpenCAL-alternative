@@ -51,15 +51,17 @@ def main():
     # 3. Pi5Neo LED Array Test
     print("\n[3/3] Testing Pi5Neo LED Ring...")
     try:
-        from opencal.hardware.led_manager import LEDManager
+        from opencal.hardware.led_manager import LEDManager, GREEN, BLUE
         leds = LEDManager(cfg.led_array)
         print("  -> Setting LEDs to Green...")
-        leds.set_color([0, 200, 0, 0])
+        leds.set_led(GREEN)
         time.sleep(1.0)
         print("  -> Setting LEDs to Blue...")
-        leds.set_color([0, 0, 200, 0])
+        leds.set_led(BLUE)
         time.sleep(1.0)
-        leds.clear()
+        print("  -> Running startup animation...")
+        leds.run_start_animation()
+        leds.clear_leds()
         print("  -> LED Ring Test: SUCCESS!")
         if 'lcd' in locals():
             lcd.write_message("All Tests Finished!", 3)
