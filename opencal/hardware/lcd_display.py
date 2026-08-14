@@ -5,7 +5,7 @@ from typing import final
 from opencal.utils.config import LcdDisplayConfig
 
 try:
-    from smbus2 import SMBus
+    from smbus2 import SMBus, i2c_msg
     HAS_SMBUS2 = True
 except ImportError:
     HAS_SMBUS2 = False
@@ -24,7 +24,7 @@ class NewhavenLCDBackend:
     def __init__(self, bus_num: int = 1, address: int = 0x28, contrast: int = 40, backlight: int = 8):
         self.bus_num = bus_num
         self.address = address
-        time.sleep(0.1)  # 100ms startup delay required for PIC microcontroller bootup
+        time.sleep(0.15)  # Startup delay required for PIC microcontroller bootup
         if HAS_SMBUS2:
             try:
                 self.bus = SMBus(self.bus_num)
@@ -39,44 +39,45 @@ class NewhavenLCDBackend:
         self.set_contrast(contrast)
         self.set_backlight(backlight)
 
-    def _write_cmd(self, cmd_bytes: list[int], delay: float = 0.001):
-        if not self.bus:
+    def _write_bytes(self, data: list[int], delay: float = 0.002):
+        if not self.bus or not data:
             return
         try:
-            self.bus.write_i2c_block_data(self.address, cmd_bytes[0], list(cmd_bytes[1:]))
-        except Exception as e:
-            print(f"I2C Write Cmd Error: {e}")
+            msg = i2c_msg.write(self.address, data)
+            self.bus.i2c_rdwr(msg)
+        except Exception:
+            try:
+                for b in data:
+                    self.bus.write_byte(self.address, b)
+                    time.sleep(0.0001)
+            except Exception as e:
+                print(f"I2C Write Error: {e}")
         time.sleep(delay)
 
     def display_on(self):
-        self._write_cmd([0xFE, 0x41], delay=0.001)
+        self._write_bytes([0xFE, 0x41], delay=0.002)
 
     def clear(self):
-        self._write_cmd([0xFE, 0x51], delay=0.002)
+        self._write_bytes([0xFE, 0x51], delay=0.005)
 
     def set_contrast(self, level: int):
         level = max(1, min(50, level))
-        self._write_cmd([0xFE, 0x52, level], delay=0.001)
+        self._write_bytes([0xFE, 0x52, level], delay=0.002)
 
     def set_backlight(self, level: int):
         level = max(1, min(8, level))
-        self._write_cmd([0xFE, 0x53, level], delay=0.001)
+        self._write_bytes([0xFE, 0x53, level], delay=0.002)
 
     def set_cursor(self, line: int, col: int):
         if 0 <= line <= 3 and 0 <= col <= 19:
             pos = self.LINE_OFFSETS[line] + col
-            self._write_cmd([0xFE, 0x45, pos], delay=0.001)
+            self._write_bytes([0xFE, 0x45, pos], delay=0.002)
 
     def write_string(self, text: str):
         if not self.bus or not text:
             return
         ascii_bytes = [ord(char) for char in text]
-        if ascii_bytes:
-            try:
-                self.bus.write_i2c_block_data(self.address, ascii_bytes[0], ascii_bytes[1:])
-            except Exception as e:
-                print(f"I2C Write String Error: {e}")
-            time.sleep(0.0001 * len(ascii_bytes))
+        self._write_bytes(ascii_bytes, delay=0.001)
 
     def write_line(self, line: int, text: str):
         formatted_text = text.ljust(20)[:20]
