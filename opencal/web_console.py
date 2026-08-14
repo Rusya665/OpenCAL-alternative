@@ -231,6 +231,37 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             </div>
             <p style="color: var(--text-muted); font-size: 13px;">Turn the physical knob or press the button on the machine to see live updates!</p>
         </div>
+
+        <!-- 5. Camera Module 3 Preview -->
+        <div class="card" style="grid-column: 1 / -1;">
+            <div class="card-title" style="display: flex; justify-content: space-between;">
+                <span>📷 Camera Module 3 (Sony IMX708)</span>
+                <span id="cam-badge" style="font-size: 13px; color: var(--accent-cyan);">Status: Ready</span>
+            </div>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div style="flex: 2; min-width: 320px;">
+                    <img id="camera-frame" src="/api/camera/snapshot" style="width: 100%; border-radius: 10px; border: 1px solid var(--border-card); background: #050811; max-height: 420px; object-fit: contain; display: block;" onerror="this.src='/api/camera/placeholder'">
+                </div>
+                <div style="flex: 1; min-width: 260px; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <div class="form-group">
+                            <label>Manual Lens Focus: <span id="focus-val">9.5</span> Diopters</label>
+                            <div class="range-wrap">
+                                <input type="range" id="focus-slider" min="0" max="15" step="0.5" value="9.5" oninput="document.getElementById('focus-val').innerText=this.value" onchange="setCameraFocus(this.value)">
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-top: 12px;">
+                            <label>Live Stream Auto-Refresh</label>
+                            <button id="stream-toggle-btn" class="success" onclick="toggleCameraStream()">Start Live Stream (2 FPS)</button>
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button class="success" onclick="captureSnapshot()">📸 Take Snapshot</button>
+                        <button onclick="triggerAutofocus()">🎯 Autofocus</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -314,6 +345,39 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             await fetch('/api/led/animation', {method: 'POST'});
         }
 
+        async function setCameraFocus(val) {
+            await fetch('/api/camera/focus', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({focus: parseFloat(val)})
+            });
+        }
+
+        async function triggerAutofocus() {
+            await fetch('/api/camera/autofocus', {method: 'POST'});
+        }
+
+        function captureSnapshot() {
+            document.getElementById('camera-frame').src = '/api/camera/snapshot?t=' + Date.now();
+        }
+
+        let streamInterval = null;
+        function toggleCameraStream() {
+            const btn = document.getElementById('stream-toggle-btn');
+            if (streamInterval) {
+                clearInterval(streamInterval);
+                streamInterval = null;
+                btn.innerText = 'Start Live Stream (2 FPS)';
+                btn.className = 'success';
+            } else {
+                streamInterval = setInterval(() => {
+                    document.getElementById('camera-frame').src = '/api/camera/snapshot?t=' + Date.now();
+                }, 500);
+                btn.innerText = 'Stop Live Stream';
+                btn.className = 'danger';
+            }
+        }
+
         // Live Telemetry Poller
         setInterval(async () => {
             try {
@@ -333,6 +397,9 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                     }
                     if (data.stepper) {
                         document.getElementById('motor-pos').innerText = data.stepper.position;
+                    }
+                    if (data.camera) {
+                        document.getElementById('cam-badge').innerText = 'Status: ' + (data.camera.connected ? 'Active (' + data.camera.model + ')' : 'Connecting...');
                     }
                 }
             } catch (e) {}
@@ -383,10 +450,66 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
+            cam_ok = False
+            if self.hardware and self.hardware.camera and hasattr(self.hardware.camera, "picam") and self.hardware.camera.picam:
+                cam_ok = True
+
             self._send_json({
                 "rotary": {"steps": steps, "button": btn_active},
-                "stepper": {"position": pos}
+                "stepper": {"position": pos},
+                "camera": {"connected": cam_ok, "model": "Sony IMX708 Module 3"}
             })
+            return
+
+        if parsed.path == "/api/camera/snapshot":
+            # Attempt to capture frame via rpicam-still or CameraController
+            img_path = Path("/tmp/web_capture.jpeg")
+            captured = False
+            if self.hardware and self.hardware.camera:
+                try:
+                    captured = self.hardware.camera.capture_image(img_path)
+                except Exception:
+                    pass
+
+            if not captured:
+                # Fallback to rpicam-still fast grab
+                try:
+                    import subprocess
+                    subprocess.run(
+                        ["rpicam-still", "-t", "200", "-o", "/tmp/web_capture.jpeg", "--nopreview", "-n", "--width", "800", "--height", "600"],
+                        capture_output=True, timeout=2
+                    )
+                    captured = img_path.exists()
+                except Exception:
+                    pass
+
+            if captured and img_path.exists():
+                try:
+                    with open(img_path, "rb") as f:
+                        img_data = f.read()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/jpeg")
+                    self.send_header("Cache-Control", "no-cache")
+                    self.end_headers()
+                    self.wfile.write(img_data)
+                    return
+                except Exception:
+                    pass
+
+            # If no frame available, serve SVG placeholder
+            svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><rect width="100%" height="100%" fill="#0a0f1d"/><text x="50%" y="45%" fill="#00f0ff" font-family="sans-serif" font-size="20" text-anchor="middle" font-weight="bold">Camera Module 3 (Sony IMX708)</text><text x="50%" y="60%" fill="#94a3b8" font-family="sans-serif" font-size="14" text-anchor="middle">Check ribbon cable seating in CAM0/CAM1 slot</text></svg>'
+            self.send_response(200)
+            self.send_header("Content-Type", "image/svg+xml")
+            self.end_headers()
+            self.wfile.write(svg.encode("utf-8"))
+            return
+
+        if parsed.path == "/api/camera/placeholder":
+            svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><rect width="100%" height="100%" fill="#0a0f1d"/><text x="50%" y="50%" fill="#94a3b8" font-family="sans-serif" font-size="16" text-anchor="middle">Awaiting Camera Feed...</text></svg>'
+            self.send_response(200)
+            self.send_header("Content-Type", "image/svg+xml")
+            self.end_headers()
+            self.wfile.write(svg.encode("utf-8"))
             return
 
         self._send_json({"error": "Not Found"}, status=404)
@@ -496,6 +619,20 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/led/animation":
             if self.hardware and self.hardware.led_manager:
                 threading.Thread(target=self.hardware.led_manager.run_start_animation, daemon=True).start()
+            self._send_json({"status": "ok"})
+            return
+
+        # 4. Camera Endpoints
+        if parsed.path == "/api/camera/focus":
+            focus_val = float(data.get("focus", 9.5))
+            if self.hardware and self.hardware.camera and hasattr(self.hardware.camera, "set_focus"):
+                self.hardware.camera.set_focus(focus_val)
+            self._send_json({"status": "ok"})
+            return
+
+        if parsed.path == "/api/camera/autofocus":
+            if self.hardware and self.hardware.camera and hasattr(self.hardware.camera, "activate_autofocus"):
+                self.hardware.camera.activate_autofocus()
             self._send_json({"status": "ok"})
             return
 
