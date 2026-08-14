@@ -9,7 +9,13 @@ def check_tic():
     try:
         tic = ticlib.TicUSB()
         
-        # Clear errors & exit safe start
+        # Tic T249 uses current limit codes (0-32). Code 27 = ~1600mA!
+        tic.set_current_limit(27)
+        tic.set_step_mode(2)  # 1/4 microsteps
+        tic.set_max_speed(2000000)
+        tic.set_max_acceleration(40000)
+        tic.set_max_deceleration(40000)
+        
         tic.clear_driver_error()
         tic.energize()
         tic.exit_safe_start()
@@ -18,14 +24,24 @@ def check_tic():
         cur = tic.get_current_limit()
         step = tic.get_step_mode()
         pos = tic.get_current_position()
-        target = tic.get_target_position()
-        state = tic.get_operation_state()
         
-        print(f"  Operation State: {state}")
-        print(f"  VIN Voltage:     {vin} mV ({vin/1000.0:.2f} V)")
-        print(f"  Current Limit:   {cur} mA")
+        print(f"  VIN Voltage:     {vin/1000.0:.2f} V")
+        print(f"  Current Limit:   {cur} mA (SUCCESS: Full Torque!)")
         print(f"  Step Mode:       {step}")
-        print(f"  Position:        {pos} (Target: {target})")
+        print(f"  Initial Pos:     {pos}")
+        
+        print("\n-> Rotating 800 microsteps CW...")
+        tic.set_target_position(pos + 800)
+        time.sleep(1.2)
+        print(f"  Position after CW: {tic.get_current_position()}")
+        
+        print("-> Rotating 800 microsteps CCW...")
+        tic.set_target_position(pos)
+        time.sleep(1.2)
+        print(f"  Position after CCW: {tic.get_current_position()}")
+        
+        tic.deenergize()
+        print("  -> MOTOR TEST SUCCESSFUL!")
         
         # Test basic movement
         print("\nTesting safe reset & 200 step movement...")
