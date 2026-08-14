@@ -587,11 +587,11 @@ class LCDGui:
         """Start the GUI loop. Must call set_root() before run()."""
         self.show_startup_screen()
 
-        encoder = self.pc.hardware.rotary.encoder
-        encoder.when_rotated_clockwise = lambda: self.handle_rotary_rotation(1)
-        encoder.when_rotated_counter_clockwise = lambda: self.handle_rotary_rotation(-1)
-
-        self.pc.hardware.rotary.button.when_pressed = self.handle_button_press
+        if self.pc.hardware.rotary:
+            encoder = self.pc.hardware.rotary.encoder
+            encoder.when_rotated_clockwise = lambda: self.handle_rotary_rotation(1)
+            encoder.when_rotated_counter_clockwise = lambda: self.handle_rotary_rotation(-1)
+            self.pc.hardware.rotary.button.when_pressed = self.handle_button_press
 
         while self.running:
             # Check for signals from pygame (only meaningful in PYGAME mode).

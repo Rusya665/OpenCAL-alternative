@@ -26,9 +26,14 @@ class HardwareController:
 
     def initialize_hardware(self, config: Config):
         """Initialize all hardware components and handle any errors."""
+        self.stepper = None
+        self.led_manager = None
+        self.lcd = None
+        self.rotary = None
+        self.projector = None
+        self.usb_device = None
+        self.camera = None
 
-        # TODO: All this error checking needs to actually do something
-        self.stepper: StepperMotorInterface
         try:
             print("initializing stepper")
             self.stepper = create_stepper(config.stepper)
