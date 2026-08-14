@@ -15,16 +15,37 @@ def unique_path(path: Path) -> Path:
 
 
 class MP4Driver:
-    def __init__(self, mount_point: Path = Path("/media/opencal/")):
-        self.mount_point = mount_point
+    def __init__(self, mount_point: Path | None = None):
+        self._custom_mount_point = mount_point
+
+    @property
+    def mount_point(self) -> Path:
+        if self._custom_mount_point is not None:
+            return self._custom_mount_point
+        # Check standard Raspberry Pi OS mount points
+        candidates = [
+            Path("/media/softa-vam"),
+            Path("/media/opencal"),
+            Path("/media"),
+            Path("/mnt"),
+        ]
+        for c in candidates:
+            if c.exists() and any(c.iterdir()):
+                return c
+        # Default fallback
+        return Path("/media/softa-vam") if Path("/media/softa-vam").exists() else Path("/media")
 
     def _mounted_drive(self) -> Path | None:
         """Return the subdirectory that has an active filesystem mount, or None."""
-        if not self.mount_point.exists():
+        mp = self.mount_point
+        if not mp.exists():
             return None
-        for entry in self.mount_point.iterdir():
-            if entry.is_dir() and os.path.ismount(entry):
-                return entry
+        try:
+            for entry in mp.iterdir():
+                if entry.is_dir():
+                    return entry
+        except Exception:
+            return None
         return None
 
     def is_mounted(self) -> bool:
@@ -43,17 +64,19 @@ class MP4Driver:
         List all MP4 files in the USB storage device directory.
         Returns a list of file names (strings).
         """
-
         mp4_paths = []
+        mp = self.mount_point
+        if not mp.exists():
+            return []
 
-        if not self.mount_point.exists():
-            raise FileNotFoundError(f"USB mount point {self.mount_point} does not exist")
-
-        for dir_path, _dirs, files in os.walk(self.mount_point):
-            for file in files:
-                file_path = Path(dir_path) / file
-                if file_path.suffix == ".mp4":
-                    mp4_paths.append(file_path)
+        try:
+            for dir_path, _dirs, files in os.walk(mp):
+                for file in files:
+                    file_path = Path(dir_path) / file
+                    if file_path.suffix.lower() == ".mp4":
+                        mp4_paths.append(file_path)
+        except Exception:
+            return []
 
         return mp4_paths
 
