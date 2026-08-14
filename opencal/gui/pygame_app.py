@@ -50,7 +50,9 @@ class PygameApp:
             try:
                 screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
             except Exception as e:
-                print(f"WARNING: PyGame display init failed ({e}), running LCD-only.")
+                print(f"WARNING: PyGame display init failed ({e}), running in LCD-only mode.")
+                while not self.stop_event.is_set():
+                    time.sleep(0.5)
                 return
             pygame.mouse.set_visible(False)
             self.width, self.height = screen.get_size()
