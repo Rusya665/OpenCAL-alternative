@@ -39,45 +39,45 @@ class NewhavenLCDBackend:
         self.set_contrast(contrast)
         self.set_backlight(backlight)
 
-    def _send_cmd(self, cmd_bytes: list[int], delay: float = 0.005):
+    def _send_cmd(self, cmd_bytes: list[int], delay: float = 0.01):
         if not self.bus:
             return
-        for b in cmd_bytes:
-            try:
-                self.bus.write_byte(self.address, b)
-                time.sleep(0.001)  # 1ms inter-byte spacing required for PIC command parser
-            except Exception as e:
-                print(f"I2C Cmd Error: {e}")
+        try:
+            msg = i2c_msg.write(self.address, cmd_bytes)
+            self.bus.i2c_rdwr(msg)
+        except Exception as e:
+            print(f"I2C Cmd Error: {e}")
         time.sleep(delay)
 
     def display_on(self):
-        self._send_cmd([0xFE, 0x41], delay=0.005)
+        self._send_cmd([0xFE, 0x41], delay=0.01)
 
     def clear(self):
-        self._send_cmd([0xFE, 0x51], delay=0.015)
+        self._send_cmd([0xFE, 0x51], delay=0.02)
 
     def set_contrast(self, level: int):
         level = max(1, min(50, level))
-        self._send_cmd([0xFE, 0x52, level], delay=0.005)
+        self._send_cmd([0xFE, 0x52, level], delay=0.01)
 
     def set_backlight(self, level: int):
         level = max(1, min(8, level))
-        self._send_cmd([0xFE, 0x53, level], delay=0.005)
+        self._send_cmd([0xFE, 0x53, level], delay=0.01)
 
     def set_cursor(self, line: int, col: int):
         if 0 <= line <= 3 and 0 <= col <= 19:
             pos = self.LINE_OFFSETS[line] + col
-            self._send_cmd([0xFE, 0x45, pos], delay=0.003)
+            self._send_cmd([0xFE, 0x45, pos], delay=0.005)
 
     def write_string(self, text: str):
         if not self.bus or not text:
             return
-        for char in text:
-            try:
-                self.bus.write_byte(self.address, ord(char))
-                time.sleep(0.0012)  # 1.2ms per char for clean PIC HD44780 rendering
-            except Exception as e:
-                print(f"I2C Write Char Error: {e}")
+        try:
+            char_bytes = [ord(c) for c in text]
+            msg = i2c_msg.write(self.address, char_bytes)
+            self.bus.i2c_rdwr(msg)
+        except Exception as e:
+            print(f"I2C Write Char Error: {e}")
+        time.sleep(0.005)
 
     def write_line(self, line: int, text: str):
         formatted_text = text.ljust(20)[:20]
