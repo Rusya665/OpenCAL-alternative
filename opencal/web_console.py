@@ -141,6 +141,18 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <label>Row 3 Text</label>
                 <input type="text" id="input-3" maxlength="20" placeholder="Row 3 message...">
             </div>
+            <div class="form-group" style="margin-top: 14px;">
+                <label>Contrast (1-50): <span id="contrast-val">42</span></label>
+                <div class="range-wrap">
+                    <input type="range" id="contrast-slider" min="1" max="50" value="42" oninput="document.getElementById('contrast-val').innerText=this.value" onchange="setLcdContrast(this.value)">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Backlight Brightness (1-8): <span id="backlight-val">8</span></label>
+                <div class="range-wrap">
+                    <input type="range" id="backlight-slider" min="1" max="8" value="8" oninput="document.getElementById('backlight-val').innerText=this.value" onchange="setLcdBacklight(this.value)">
+                </div>
+            </div>
             <div class="btn-group">
                 <button class="success" onclick="sendLcdLines()">Send to LCD</button>
                 <button class="danger" onclick="clearLcd()">Clear Screen</button>
@@ -243,12 +255,20 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             }
         }
 
-        async function clearLcd() {
-            await fetch('/api/lcd/clear', {method: 'POST'});
-            for(let i=0; i<4; i++) {
-                document.getElementById('line-' + i).innerText = ' '.repeat(20);
-                document.getElementById('input-' + i).value = '';
-            }
+        async function setLcdContrast(val) {
+            await fetch('/api/lcd/contrast', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({contrast: parseInt(val)})
+            });
+        }
+
+        async function setLcdBacklight(val) {
+            await fetch('/api/lcd/backlight', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({backlight: parseInt(val)})
+            });
         }
 
         async function jogSteps(steps) {
@@ -389,6 +409,20 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/lcd/clear":
             if self.hardware and self.hardware.lcd:
                 self.hardware.lcd.clear()
+            self._send_json({"status": "ok"})
+            return
+
+        if parsed.path == "/api/lcd/contrast":
+            val = int(data.get("contrast", 42))
+            if self.hardware and self.hardware.lcd and hasattr(self.hardware.lcd.backend, "set_contrast"):
+                self.hardware.lcd.backend.set_contrast(val)
+            self._send_json({"status": "ok"})
+            return
+
+        if parsed.path == "/api/lcd/backlight":
+            val = int(data.get("backlight", 8))
+            if self.hardware and self.hardware.lcd and hasattr(self.hardware.lcd.backend, "set_backlight"):
+                self.hardware.lcd.backend.set_backlight(val)
             self._send_json({"status": "ok"})
             return
 

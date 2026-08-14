@@ -43,10 +43,11 @@ class TicUSBStepperMotor(StepperMotorInterface):
         # Configure smooth 1/16 microstepping & current limits directly on device
         try:
             self.tic.set_step_mode(4)  # 1/16 microstepping
-            self.tic.set_current_limit(1500)  # 1.5A
-            self.tic.set_max_speed(2000000)
-            self.tic.set_max_acceleration(80000)
-            self.tic.set_max_deceleration(80000)
+            self.tic.set_current_limit(27)  # Code 27 = ~1600mA on Tic T249
+            self.tic.set_max_speed(20000000)
+            self.tic.set_max_acceleration(400000)
+            self.tic.set_max_deceleration(400000)
+            self.tic.clear_driver_error()
         except Exception as e:
             print(f"Warning configuring Tic parameters: {e}")
 
@@ -97,16 +98,19 @@ class TicUSBStepperMotor(StepperMotorInterface):
         direction = direction or self.default_direction
         print(f"INFO: Rotating {steps} steps {direction}")
 
+        self.tic.clear_driver_error()
         self.tic.energize()
         self.tic.exit_safe_start()
+        self.tic.reset_command_timeout()
 
         signed_steps = -steps if direction == "CCW" else steps
         target = self.tic.get_current_position() + signed_steps
         self.tic.set_target_position(target)
 
-        while self.tic.get_current_position() != target:
+        t_start = time.time()
+        while self.tic.get_current_position() != target and (time.time() - t_start < 10):
             self.tic.reset_command_timeout()
-            time.sleep(0.05)
+            time.sleep(0.02)
 
     @override
     def angle_in_steps(self) -> int:
@@ -126,8 +130,10 @@ class TicUSBStepperMotor(StepperMotorInterface):
             print("WARNING: Stepper already running")
             return
 
+        self.tic.clear_driver_error()
         self.tic.energize()
         self.tic.exit_safe_start()
+        self.tic.reset_command_timeout()
 
         velocity = self._rpm_to_tic_velocity(self._speed_rpm, direction)
         self.tic.set_target_velocity(velocity)
