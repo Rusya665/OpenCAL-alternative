@@ -11,23 +11,23 @@ except (ImportError, ModuleNotFoundError):
 
 from opencal.utils.config import LedArrayConfig
 
-RED    = (0,   240, 0,   0)
-GREEN  = (240, 0,   0,   0)
-BLUE   = (0,   0,   240, 0)
-YELLOW = (240, 240, 0,   0)
-WHITE  = (0,   0,   0,   240)
-OFF    = (0,   0,   0,   0)
+RED    = (255, 0,   0)
+GREEN  = (0,   255, 0)
+BLUE   = (0,   0,   255)
+YELLOW = (255, 200, 0)
+WHITE  = (255, 255, 255)
+OFF    = (0,   0,   0)
 
 
 @final
 class LEDManager:
     def __init__(self, config: LedArrayConfig):
         self.num_led: int = config.num_led
-        self.default_color: tuple[int, int, int, int] = config.default_color
+        self.default_color: tuple[int, int, int] = (0, 255, 0)
 
         if HAS_PI5NEO:
             try:
-                self.neo = Pi5Neo("/dev/spidev0.0", self.num_led, 800, pixel_type=EPixelType.RGBW)
+                self.neo = Pi5Neo("/dev/spidev0.0", self.num_led, 800, pixel_type=EPixelType.GRB)
                 self.clear_leds()
             except Exception as e:
                 self.neo = None
@@ -38,17 +38,19 @@ class LEDManager:
 
     def set_led(
         self,
-        color: tuple[int, int, int, int],
+        color: tuple[int, int, int] | tuple[int, int, int, int],
         led_index: list[int] | None = None,
         update: bool = True,
     ):
         if not self.neo:
             return
+        # Extract RGB components
+        rgb = color[:3]
         if led_index is None:
-            self.neo.fill_strip(*color)
+            self.neo.fill_strip(*rgb)
         else:
             for idx in led_index:
-                _ = self.neo.set_led_color(idx, *color)
+                _ = self.neo.set_led_color(idx, *rgb)
         if update:
             self.neo.update_strip()
 

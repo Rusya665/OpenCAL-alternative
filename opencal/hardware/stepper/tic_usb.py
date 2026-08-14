@@ -39,6 +39,17 @@ class TicUSBStepperMotor(StepperMotorInterface):
     def __init__(self, config: TicUSBStepperConfig):
         _apply_tic_settings()
         self.tic = TicUSB()
+        
+        # Configure smooth 1/16 microstepping & current limits directly on device
+        try:
+            self.tic.set_step_mode(4)  # 1/16 microstepping
+            self.tic.set_current_limit(1500)  # 1.5A
+            self.tic.set_max_speed(2000000)
+            self.tic.set_max_acceleration(80000)
+            self.tic.set_max_deceleration(80000)
+        except Exception as e:
+            print(f"Warning configuring Tic parameters: {e}")
+
         self.encoder = RotaryEncoder(config.encoder_a_pin, config.encoder_b_pin, max_steps=0)
 
         self.default_rpm = config.default_rpm
