@@ -8,16 +8,20 @@ def check_tic():
     print("=" * 50)
     try:
         tic = ticlib.TicUSB()
-        err = tic.get_error_status()
-        state = tic.get_operation_state()
+        
+        # Clear errors & exit safe start
+        tic.clear_driver_error()
+        tic.energize()
+        tic.exit_safe_start()
+        
         vin = tic.get_vin_voltage()
         cur = tic.get_current_limit()
         step = tic.get_step_mode()
         pos = tic.get_current_position()
         target = tic.get_target_position()
+        state = tic.get_operation_state()
         
         print(f"  Operation State: {state}")
-        print(f"  Error Status:    {hex(err)} (0x0 = No Error)")
         print(f"  VIN Voltage:     {vin} mV ({vin/1000.0:.2f} V)")
         print(f"  Current Limit:   {cur} mA")
         print(f"  Step Mode:       {step}")
