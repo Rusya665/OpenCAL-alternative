@@ -127,28 +127,56 @@ class CameraController:
             return
         self.picam.set_controls({"AfMode": controls.AfModeEnum.Continuous})
 
-    def start_recording(self, file: Path):
-        if not self.picam or not controls:
-            print("WARNING: No camera connected, cannot start recording.")
-            return
+    def start_recording(self, file: Path | None = None) -> Path:
+        if not self.picam:
+            raise RuntimeError("No camera connected, cannot start recording.")
+        if file is None:
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            rec_dir = Path.home() / "OpenCAL-alternative" / "recordings"
+            rec_dir.mkdir(parents=True, exist_ok=True)
+            file = rec_dir / f"recording_{ts}.mp4"
+
         if self.picam.started:
-            self.picam.stop()
-        video_config = self.picam.create_video_configuration(main={"size": (1920, 1080)})
-        video_config["controls"]["AfMode"] = controls.AfModeEnum.Manual
+            try:
+                self.picam.stop()
+            except Exception:
+                pass
+
+        video_config = self.picam.create_video_configuration(main={"size": (1280, 720)})
+        if controls:
+            video_config["controls"]["AfMode"] = controls.AfModeEnum.Continuous
         self.picam.configure(video_config)
         encoder = H264Encoder()
-        self.picam.start_recording(encoder=encoder, output=str(file))
-        time.sleep(0.5)
-        self._apply_controls()
-        print("DEBUG: starting recording")
-        self._recording = True
+        try:
+            from picamera2.outputs import FfmpegOutput
+            output = FfmpegOutput(str(file))
+        except Exception:
+            output = str(file)
 
-    def stop_recording(self):
+        self.picam.start_recording(encoder=encoder, output=output)
+        self._current_recording_file = file
+        self._recording = True
+        self.recording = True
+        print(f"DEBUG: Camera recording started -> {file}")
+        return file
+
+    def stop_recording(self) -> Path | None:
         if not self.picam:
-            return
+            return None
+        saved_file = getattr(self, "_current_recording_file", None)
         if self._recording:
-            print("DEBUG: stopping recording")
-            self.picam.stop_recording()
+            print(f"DEBUG: stopping camera recording -> {saved_file}")
+            try:
+                self.picam.stop_recording()
+            except Exception as e:
+                print(f"Error stopping recording: {e}")
+            self._recording = False
+            self.recording = False
+            self._current_recording_file = None
+        return saved_file
+
+    def is_recording(self) -> bool:
+        return bool(self._recording)
 
     def stop_camera(self):
         if not self.picam:

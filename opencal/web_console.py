@@ -253,6 +253,23 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <button onclick="toggleCrosshair()">📐 Crosshair Overlay</button>
                 <button onclick="takeSnapshot()">📸 Take Snapshot</button>
             </div>
+
+            <!-- CAMERA VIDEO RECORDING CONTROLS -->
+            <div class="btn-group" style="margin-top: 10px;">
+                <button id="btn-rec-start" class="danger" onclick="startCameraRecording()">🔴 Start Recording</button>
+                <button id="btn-rec-stop" class="secondary" onclick="stopCameraRecording()" disabled>⏹ Stop Recording</button>
+            </div>
+            <div id="rec-status" style="margin-top: 8px; font-size: 12px; color: var(--text-muted); text-align: center;">Status: Ready</div>
+
+            <div style="margin-top: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 12px; color: var(--text-muted);">SAVED CAMERA VIDEOS:</span>
+                    <button style="padding: 2px 8px; font-size: 11px;" onclick="loadCameraRecordings()">🔄 Refresh</button>
+                </div>
+                <div class="file-list" id="recordings-list" style="max-height: 120px;">
+                    <div style="padding: 8px; text-align: center; color: var(--text-muted); font-size: 12px;">No recordings yet</div>
+                </div>
+            </div>
         </div>
 
         <!-- 2. VAM PRINT MANAGER & DROPZONE -->
@@ -459,6 +476,61 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         function toggleCrosshair() {
             const ch = document.getElementById('crosshair');
             ch.classList.toggle('active');
+        }
+
+        // Camera Video Recording
+        let isRecordingVideo = false;
+
+        async function startCameraRecording() {
+            try {
+                const res = await fetch('/api/camera/record/start', {method: 'POST'});
+                const data = await res.json();
+                if (data.message) showToast(data.message);
+                document.getElementById('btn-rec-start').disabled = true;
+                document.getElementById('btn-rec-stop').disabled = false;
+                document.getElementById('rec-status').innerHTML = '<span style="color: var(--accent-rose); font-weight: bold;">● RECORDING...</span>';
+                isRecordingVideo = true;
+            } catch(e) {
+                showToast('Error starting recording: ' + e);
+            }
+        }
+
+        async function stopCameraRecording() {
+            try {
+                const res = await fetch('/api/camera/record/stop', {method: 'POST'});
+                const data = await res.json();
+                if (data.message) showToast(data.message);
+                document.getElementById('btn-rec-start').disabled = false;
+                document.getElementById('btn-rec-stop').disabled = true;
+                document.getElementById('rec-status').innerText = 'Status: Ready (Saved)';
+                isRecordingVideo = false;
+                setTimeout(loadCameraRecordings, 800);
+            } catch(e) {
+                showToast('Error stopping recording: ' + e);
+            }
+        }
+
+        async function loadCameraRecordings() {
+            try {
+                const res = await fetch('/api/camera/recordings');
+                const data = await res.json();
+                const container = document.getElementById('recordings-list');
+                if (!data.recordings || data.recordings.length === 0) {
+                    container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text-muted); font-size: 12px;">No recordings found</div>';
+                    return;
+                }
+                container.innerHTML = data.recordings.map(r => `
+                    <div class="file-item" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px;">
+                        <span style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px;">📹 ${r.name}</span>
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                            <span style="font-size: 10px; color: var(--text-muted);">${r.size}</span>
+                            <a href="/api/camera/recordings/${r.name}" target="_blank" style="color: var(--accent-cyan); font-size: 11px; text-decoration: none; padding: 2px 6px; background: rgba(56,189,248,0.15); border-radius: 4px;">▶ View</a>
+                        </div>
+                    </div>
+                `).join('');
+            } catch(e) {
+                console.error("Error loading recordings:", e);
+            }
         }
 
         // Print functions
@@ -676,6 +748,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         checkDeviceAuth();
         setInterval(updateTelemetry, 500);
         fetchPrintFiles();
+        loadCameraRecordings();
     </script>
 </body>
 </html>
@@ -795,11 +868,47 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                             "status": "PRINTING (Active)" if print_running else "IDLE / Ready",
                         },
                         "projector_volume": self.hardware.projector.get_volume() if (self.hardware and self.hardware.projector) else 20,
+                        "camera_recording": self.hardware.camera.is_recording() if (self.hardware and self.hardware.camera) else False,
                     }
                 )
             except Exception as e:
                 self._send_json({"error": str(e)}, status=500)
             return
+
+        if parsed.path == "/api/camera/recordings":
+            rec_dir = Path.home() / "OpenCAL-alternative" / "recordings"
+            rec_dir.mkdir(parents=True, exist_ok=True)
+            files = []
+            try:
+                for f in sorted(rec_dir.glob("*.mp4"), key=os.path.getmtime, reverse=True):
+                    size_mb = f.stat().st_size / (1024 * 1024)
+                    files.append({
+                        "name": f.name,
+                        "size": f"{size_mb:.1f} MB",
+                        "time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(f.stat().st_mtime))
+                    })
+            except Exception as e:
+                print(f"Error listing recordings: {e}")
+            self._send_json({"recordings": files})
+            return
+
+        if parsed.path.startswith("/api/camera/recordings/"):
+            filename = parsed.path.split("/")[-1]
+            rec_dir = Path.home() / "OpenCAL-alternative" / "recordings"
+            file_path = rec_dir / filename
+            if file_path.exists() and file_path.is_file():
+                self.send_response(200)
+                self.send_header("Content-Type", "video/mp4")
+                self.send_header("Content-Length", str(file_path.stat().st_size))
+                self.send_header("Content-Disposition", f'inline; filename="{filename}"')
+                self.end_headers()
+                with open(file_path, "rb") as f:
+                    while chunk := f.read(64 * 1024):
+                        self.wfile.write(chunk)
+                return
+            else:
+                self.send_error(404, "Recording not found")
+                return
 
         if parsed.path == "/api/wifi/scan":
             networks = []
@@ -992,6 +1101,29 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 if self.hardware and self.hardware.camera:
                     self.hardware.camera.activate_autofocus()
                 self._send_json({"message": "Continuous Autofocus Activated"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/camera/record/start":
+            try:
+                if self.hardware and self.hardware.camera:
+                    saved_file = self.hardware.camera.start_recording()
+                    self._send_json({"message": f"Recording started: {saved_file.name}", "file": saved_file.name})
+                else:
+                    self._send_json({"error": "Camera not available"}, status=500)
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/camera/record/stop":
+            try:
+                if self.hardware and self.hardware.camera:
+                    saved_file = self.hardware.camera.stop_recording()
+                    name = saved_file.name if saved_file else "recording.mp4"
+                    self._send_json({"message": f"Recording saved: {name}", "file": name})
+                else:
+                    self._send_json({"error": "Camera not available"}, status=500)
             except Exception as e:
                 self._send_json({"error": str(e)}, status=500)
             return
