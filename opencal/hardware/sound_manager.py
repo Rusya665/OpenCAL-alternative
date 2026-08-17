@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
+import queue
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import final
-
-import pygame
 
 SOUNDS_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "sounds"
 STARTUP_MP3 = SOUNDS_DIR / "win_xp_startup.mp3"
@@ -17,26 +16,48 @@ CLICK_WAV = SOUNDS_DIR / "doom_click.wav"
 
 @final
 class SoundManager:
-    """Manages audio effects, startup/shutdown jingles, and Doom-style menu navigation sounds."""
+    """Manages audio effects, startup/shutdown jingles, and Doom-style menu navigation sounds.
+
+    Uses a dedicated non-blocking worker queue and ALSA/aplay subprocesses to ensure
+    100% thread-safety across GPIO interrupts, web threads, and LCD rendering loops.
+    """
 
     def __init__(self, sounds_enabled: bool = True) -> None:
         self.sounds_enabled: bool = sounds_enabled
-        self._scroll_sound: pygame.mixer.Sound | None = None
-        self._click_sound: pygame.mixer.Sound | None = None
-        self._mixer_initialized: bool = False
-        self._init_mixer()
+        self._queue: queue.Queue[Path | None] = queue.Queue(maxsize=16)
+        self._worker_thread = threading.Thread(target=self._audio_worker, daemon=True)
+        self._worker_thread.start()
 
-    def _init_mixer(self) -> None:
-        try:
-            if not pygame.mixer.get_init():
-                pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
-            if SCROLL_WAV.exists():
-                self._scroll_sound = pygame.mixer.Sound(str(SCROLL_WAV))
-            if CLICK_WAV.exists():
-                self._click_sound = pygame.mixer.Sound(str(CLICK_WAV))
-            self._mixer_initialized = True
-        except Exception as e:
-            print(f"SoundManager mixer init warning: {e}")
+    def _audio_worker(self) -> None:
+        """Sequential background audio playback worker."""
+        while True:
+            try:
+                sound_file = self._queue.get()
+                if sound_file is None:
+                    break
+                if not self.sounds_enabled or not sound_file.exists():
+                    continue
+
+                if sound_file.suffix.lower() == ".wav":
+                    # Instantaneous low-latency ALSA playback for UI ticks
+                    subprocess.run(
+                        ["aplay", "-q", "-N", str(sound_file)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=0.8,
+                    )
+                else:
+                    # MP3 playback for startup/shutdown jingles
+                    subprocess.run(
+                        ["mpv", "--no-video", "--really-quiet", str(sound_file)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=6.0,
+                    )
+            except Exception:
+                pass
+            finally:
+                time.sleep(0.01)
 
     def set_enabled(self, enabled: bool, persist: bool = True) -> None:
         """Enable or disable system sounds and optionally save to config.json."""
@@ -53,46 +74,31 @@ class SoundManager:
         return self.sounds_enabled
 
     def play_scroll(self) -> None:
-        """Play Doom menu scroll sound."""
-        if not self.sounds_enabled:
+        """Play Doom menu scroll sound (non-blocking, drops if queue full)."""
+        if not self.sounds_enabled or not SCROLL_WAV.exists():
             return
-        if not self._scroll_sound and not self._mixer_initialized:
-            self._init_mixer()
-        if self._scroll_sound:
-            try:
-                self._scroll_sound.play()
-            except Exception:
-                pass
+        try:
+            self._queue.put_nowait(SCROLL_WAV)
+        except queue.Full:
+            pass
 
     def play_click(self) -> None:
-        """Play Doom menu click / select sound."""
-        if not self.sounds_enabled:
+        """Play Doom menu click / select sound (non-blocking)."""
+        if not self.sounds_enabled or not CLICK_WAV.exists():
             return
-        if not self._click_sound and not self._mixer_initialized:
-            self._init_mixer()
-        if self._click_sound:
-            try:
-                self._click_sound.play()
-            except Exception:
-                pass
+        try:
+            self._queue.put_nowait(CLICK_WAV)
+        except queue.Full:
+            pass
 
     def play_startup(self) -> None:
         """Play Windows XP startup sound asynchronously on boot."""
         if not self.sounds_enabled or not STARTUP_MP3.exists():
             return
-
-        def _play():
-            try:
-                subprocess.run(
-                    ["mpv", "--no-video", "--really-quiet", str(STARTUP_MP3)],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=6.0,
-                )
-            except Exception as e:
-                print(f"Startup sound error: {e}")
-
-        threading.Thread(target=_play, daemon=True).start()
+        try:
+            self._queue.put_nowait(STARTUP_MP3)
+        except queue.Full:
+            pass
 
     def play_shutdown(self, blocking: bool = True) -> None:
         """Play Windows XP shutdown sound synchronously before shutdown/reboot."""
