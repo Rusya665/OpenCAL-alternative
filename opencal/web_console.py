@@ -227,6 +227,20 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- VIDEO VIEWER MODAL -->
+    <div id="video-modal" style="display: none; position: fixed; inset: 0; background: rgba(5, 8, 15, 0.9); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); z-index: 9998; justify-content: center; align-items: center; padding: 20px;">
+        <div class="card" style="width: 720px; max-width: 95vw; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.4); box-shadow: 0 25px 60px rgba(0,0,0,0.9); padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <span id="modal-video-title" style="font-weight: 600; font-size: 14px; color: var(--accent-cyan);">📹 Video Playback</span>
+                <button onclick="closeVideoModal()" style="padding: 4px 10px; font-size: 14px;">✕ Close</button>
+            </div>
+            <video id="modal-video-player" controls autoplay playsinline style="width: 100%; border-radius: 8px; background: black; max-height: 60vh; outline: none;"></video>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;">
+                <a id="modal-video-download" href="#" download class="primary" style="text-decoration: none; padding: 8px 16px; font-size: 13px; border-radius: 6px; display: inline-block;">⬇ Download MP4</a>
+            </div>
+        </div>
+    </div>
+
     <div class="grid">
         <!-- 1. LIVE CAMERA & OPTICAL ALIGNMENT STUDIO -->
         <div class="card">
@@ -510,6 +524,30 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             }
         }
 
+        function playVideoModal(filename) {
+            const modal = document.getElementById('video-modal');
+            const player = document.getElementById('modal-video-player');
+            const title = document.getElementById('modal-video-title');
+            const download = document.getElementById('modal-video-download');
+            
+            const url = '/api/camera/recordings/' + encodeURIComponent(filename);
+            title.innerText = '📹 ' + filename;
+            player.src = url;
+            download.href = url;
+            download.setAttribute('download', filename);
+            modal.style.display = 'flex';
+            player.play().catch(() => {});
+        }
+
+        function closeVideoModal() {
+            const modal = document.getElementById('video-modal');
+            const player = document.getElementById('modal-video-player');
+            player.pause();
+            player.removeAttribute('src');
+            player.load();
+            modal.style.display = 'none';
+        }
+
         async function loadCameraRecordings() {
             try {
                 const res = await fetch('/api/camera/recordings');
@@ -521,10 +559,10 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 }
                 container.innerHTML = data.recordings.map(r => `
                     <div class="file-item" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px;">
-                        <span style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px;">📹 ${r.name}</span>
+                        <span style="font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px;" title="${r.name}">📹 ${r.name}</span>
                         <div style="display: flex; gap: 6px; align-items: center;">
                             <span style="font-size: 10px; color: var(--text-muted);">${r.size}</span>
-                            <a href="/api/camera/recordings/${r.name}" target="_blank" style="color: var(--accent-cyan); font-size: 11px; text-decoration: none; padding: 2px 6px; background: rgba(56,189,248,0.15); border-radius: 4px;">▶ View</a>
+                            <button onclick="playVideoModal('${r.name}')" style="color: var(--accent-cyan); font-size: 11px; padding: 2px 8px; background: rgba(56,189,248,0.15); border-radius: 4px; border: 1px solid rgba(56,189,248,0.3); cursor: pointer;">▶ Play</button>
                         </div>
                     </div>
                 `).join('');
@@ -897,15 +935,42 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
             rec_dir = Path.home() / "OpenCAL-alternative" / "recordings"
             file_path = rec_dir / filename
             if file_path.exists() and file_path.is_file():
-                self.send_response(200)
-                self.send_header("Content-Type", "video/mp4")
-                self.send_header("Content-Length", str(file_path.stat().st_size))
-                self.send_header("Content-Disposition", f'inline; filename="{filename}"')
-                self.end_headers()
-                with open(file_path, "rb") as f:
-                    while chunk := f.read(64 * 1024):
-                        self.wfile.write(chunk)
-                return
+                file_size = file_path.stat().st_size
+                range_header = self.headers.get("Range")
+                if range_header and range_header.startswith("bytes="):
+                    ranges = range_header[6:].split("-")
+                    start = int(ranges[0]) if ranges[0] else 0
+                    end = int(ranges[1]) if len(ranges) > 1 and ranges[1] else file_size - 1
+                    end = min(end, file_size - 1)
+                    length = end - start + 1
+
+                    self.send_response(206)
+                    self.send_header("Content-Type", "video/mp4")
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+                    self.send_header("Content-Length", str(length))
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.end_headers()
+                    with open(file_path, "rb") as f:
+                        f.seek(start)
+                        rem = length
+                        while rem > 0:
+                            chunk = f.read(min(64 * 1024, rem))
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                            rem -= len(chunk)
+                    return
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "video/mp4")
+                    self.send_header("Content-Length", str(file_size))
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Disposition", f'inline; filename="{filename}"')
+                    self.end_headers()
+                    with open(file_path, "rb") as f:
+                        while chunk := f.read(64 * 1024):
+                            self.wfile.write(chunk)
+                    return
             else:
                 self.send_error(404, "Recording not found")
                 return

@@ -1,3 +1,4 @@
+import subprocess
 import threading
 import time
 from typing import final
@@ -138,6 +139,8 @@ class CameraController:
             rec_dir.mkdir(parents=True, exist_ok=True)
             file = rec_dir / f"recording_{ts}.mp4"
 
+        raw_file = file.with_suffix(".h264")
+
         with self._cam_lock:
             self._recording = True
             self.recording = True
@@ -152,9 +155,10 @@ class CameraController:
                 video_config["controls"]["AfMode"] = controls.AfModeEnum.Continuous
             self.picam.configure(video_config)
             encoder = H264Encoder()
-            self.picam.start_recording(encoder=encoder, output=str(file))
+            self.picam.start_recording(encoder=encoder, output=str(raw_file))
             self._current_recording_file = file
-            print(f"DEBUG: Camera recording started -> {file}")
+            self._current_raw_file = raw_file
+            print(f"DEBUG: Camera recording started -> {raw_file}")
             return file
 
     def stop_recording(self) -> Path | None:
@@ -162,15 +166,32 @@ class CameraController:
             return None
         with self._cam_lock:
             saved_file = getattr(self, "_current_recording_file", None)
+            raw_file = getattr(self, "_current_raw_file", None)
             if self._recording:
                 print(f"DEBUG: stopping camera recording -> {saved_file}")
                 try:
                     self.picam.stop_recording()
                 except Exception as e:
                     print(f"Error stopping recording: {e}")
+                
+                # Remux raw elementary H.264 into true web-playable faststart MP4 container
+                if raw_file and raw_file.exists() and saved_file:
+                    try:
+                        subprocess.run(
+                            ["ffmpeg", "-y", "-r", "30", "-i", str(raw_file), "-c:v", "copy", "-movflags", "+faststart", str(saved_file)],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            timeout=10.0
+                        )
+                        raw_file.unlink(missing_ok=True)
+                        print(f"✓ Packaged HTML5 faststart MP4 -> {saved_file}")
+                    except Exception as e:
+                        print(f"Remux error: {e}")
+
                 self._recording = False
                 self.recording = False
                 self._current_recording_file = None
+                self._current_raw_file = None
             return saved_file
 
     def is_recording(self) -> bool:
