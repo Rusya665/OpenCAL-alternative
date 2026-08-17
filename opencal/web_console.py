@@ -445,6 +445,14 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <span class="slider-val" id="proj-vol-val">20%</span>
             </div>
 
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">PROJECTOR POWER & HARDWARE:</div>
+            <div class="btn-group" style="margin-bottom: 14px;">
+                <button class="primary" style="background: rgba(34, 197, 94, 0.2); border-color: rgba(34, 197, 94, 0.4); color: var(--accent-green);" onclick="postAPI('/api/projector/power/on')">⚡ Power ON</button>
+                <button class="secondary" style="background: rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.4); color: var(--accent-amber);" onclick="postAPI('/api/projector/power/off')">🌙 Standby / Off</button>
+                <button class="secondary" style="background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.4); color: var(--accent-purple);" onclick="postAPI('/api/projector/power/reboot')">🔄 Reboot Projector</button>
+            </div>
+
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">TEST VIDEO PLAYBACK:</div>
             <div class="btn-group">
                 <button class="primary" onclick="playExpVideo('oh_hai_mark.mp4')">▶ Play: Oh Hai Mark</button>
                 <button class="primary" onclick="playExpVideo('rick_astley.mp4')">🕺 Play: Never Gonna Give You Up</button>
@@ -1336,7 +1344,54 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(e)}, status=500)
             return
 
+        if parsed.path == "/api/projector/power/on":
+            try:
+                proj = getattr(self.hardware, "projector", None) or (getattr(self.print_controller, "hardware", None) and getattr(self.print_controller.hardware, "projector", None))
+                if proj:
+                    proj.turn_on_projector()
+                    self._send_json({"message": "Projector Power ON signal sent"})
+                else:
+                    self._send_json({"error": "Projector not available"}, status=500)
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/projector/power/off":
+            try:
+                proj = getattr(self.hardware, "projector", None) or (getattr(self.print_controller, "hardware", None) and getattr(self.print_controller.hardware, "projector", None))
+                if proj:
+                    proj.turn_off_projector()
+                    self._send_json({"message": "Projector Standby signal sent"})
+                else:
+                    self._send_json({"error": "Projector not available"}, status=500)
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/projector/power/reboot":
+            try:
+                proj = getattr(self.hardware, "projector", None) or (getattr(self.print_controller, "hardware", None) and getattr(self.print_controller.hardware, "projector", None))
+                if proj:
+                    proj.reboot_projector()
+                    self._send_json({"message": "Projector reboot cycle started..."})
+                else:
+                    self._send_json({"error": "Projector not available"}, status=500)
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
         # 7. SYSTEM CONTROLS
+        if parsed.path == "/api/system/restart_app":
+            def _restart():
+                proj = getattr(self.hardware, "projector", None) or (getattr(self.print_controller, "hardware", None) and getattr(self.print_controller.hardware, "projector", None))
+                if proj:
+                    proj.turn_off_projector()
+                time.sleep(1.0)
+                subprocess.run(["sudo", "systemctl", "restart", "opencal.service"])
+            threading.Thread(target=_restart, daemon=True).start()
+            self._send_json({"message": "Restarting OpenCAL application and waking projector..."})
+            return
+
         if parsed.path == "/api/system/reboot":
             threading.Thread(target=lambda: (time.sleep(1), subprocess.run(["sudo", "reboot"])), daemon=True).start()
             self._send_json({"message": "Rebooting system in 1 second..."})

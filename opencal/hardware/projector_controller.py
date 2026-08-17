@@ -58,6 +58,8 @@ class Projector:
         self.volume = 20  # Boot default: 20%
         self.video_playing: threading.Event | None = None
         self.set_volume(20)
+        # Automatically power on and wake projector on application boot/restart
+        threading.Thread(target=self.turn_on_projector, daemon=True).start()
 
     def get_projector_orientation(self) -> ProjectorOrientation:
         """Query display orientation from wlr-randr, so that it cannot silently be changed in the background."""
@@ -189,16 +191,59 @@ class Projector:
             print(f"Error setting volume: {e}")
 
     def turn_on_projector(self) -> None:
-        """Send HDMI-CEC signal to wake up and power on the projector."""
+        """Send HDMI-CEC signal and enable Wayland/DRM display output to wake up and power on the projector."""
         try:
+            # 1. Enable Wayland display output
             subprocess.run(
-                ["bash", "-c", "echo 'on 0.0.0.0' | cec-client -s -d 1 ; echo 'as' | cec-client -s -d 1"],
+                ["wlopm", "--on", "HDMI-A-1"],
+                env={"WAYLAND_DISPLAY": "wayland-0", "XDG_RUNTIME_DIR": "/run/user/1000", "PATH": os.environ.get("PATH", "/usr/bin:/bin")},
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=2.0
+                timeout=1.5
             )
         except Exception:
             pass
+
+        try:
+            # 2. Send HDMI-CEC Power On commands
+            subprocess.run(["cec-ctl", "-d", "/dev/cec0", "--to", "0", "--image-view-on"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.5)
+            subprocess.run(["cec-ctl", "-d", "/dev/cec0", "--to", "0", "--text-view-on"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.5)
+            subprocess.run(["cec-ctl", "-d", "/dev/cec0", "--to", "0", "--active-source", "phys-addr=1.0.0.0"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.5)
+        except Exception:
+            pass
+        print("✓ Sent Projector Power ON signal")
+
+    def turn_off_projector(self) -> None:
+        """Send HDMI-CEC standby signal and turn off HDMI display output to put projector into standby/off."""
+        try:
+            # 1. Send HDMI-CEC Standby
+            subprocess.run(["cec-ctl", "-d", "/dev/cec0", "--to", "0", "--standby"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.5)
+        except Exception:
+            pass
+
+        try:
+            # 2. Disable Wayland display output
+            subprocess.run(
+                ["wlopm", "--off", "HDMI-A-1"],
+                env={"WAYLAND_DISPLAY": "wayland-0", "XDG_RUNTIME_DIR": "/run/user/1000", "PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=1.5
+            )
+        except Exception:
+            pass
+        print("✓ Sent Projector Standby / Turn OFF signal")
+
+    def reboot_projector(self) -> None:
+        """Reboot the projector by cycling standby and power-on."""
+        def _cycle():
+            print("Cycling projector power...")
+            self.turn_off_projector()
+            import time
+            time.sleep(5.0)
+            self.turn_on_projector()
+            print("✓ Projector reboot cycle complete")
+        threading.Thread(target=_cycle, daemon=True).start()
 
     def play_experimental_video(self, video_path: Path, volume: int | None = None):
         """Play an experimental video fullscreen on the projector with audio enabled at remembered volume."""

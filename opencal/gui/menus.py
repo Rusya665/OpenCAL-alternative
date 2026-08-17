@@ -477,15 +477,25 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
             if pc.hardware and pc.hardware.projector:
                 pc.hardware.projector.play_experimental_video(path)
 
-        def _stop():
+        def _power_on():
             if pc.hardware and pc.hardware.projector:
-                pc.hardware.projector.stop_video()
-            gui.splash("Playback Stopped", 1.0)
+                pc.hardware.projector.turn_on_projector()
+            gui.splash("Projector ON Sent", 1.5)
+
+        def _standby():
+            if pc.hardware and pc.hardware.projector:
+                pc.hardware.projector.turn_off_projector()
+            gui.splash("Projector Standby", 1.5)
+
+        def _reboot():
+            if pc.hardware and pc.hardware.projector:
+                pc.hardware.projector.reboot_projector()
+            gui.splash("Rebooting Proj...", 2.0)
 
         return [
-            ActionItem("Play Oh Hai Mark", lambda: _play(oh_hai, "Oh Hai Mark")),
-            ActionItem("Play Rick Astley", lambda: _play(rick, "Rick Astley")),
-            ActionItem("Stop Video", _stop),
+            ActionItem("Power ON Proj", _power_on),
+            ActionItem("Standby / Off", _standby),
+            ActionItem("Reboot Projector", _reboot),
             VariableMenu(
                 title="Projector Volume",
                 get=lambda: pc.hardware.projector.get_volume() if (pc.hardware and pc.hardware.projector) else 20,
@@ -494,6 +504,9 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
                 max_val=100,
                 step=5,
             ),
+            ActionItem("Play Oh Hai Mark", lambda: _play(oh_hai, "Oh Hai Mark")),
+            ActionItem("Play Rick Astley", lambda: _play(rick, "Rick Astley")),
+            ActionItem("Stop Video", _stop),
         ]
 
     settings_items: list[MenuBase] = [
