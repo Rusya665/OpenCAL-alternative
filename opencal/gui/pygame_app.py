@@ -46,7 +46,13 @@ class PygameApp:
             return
 
         while not self.stop_event.is_set():
-            _ = pygame.init()
+            pygame.display.init()
+            pygame.font.init()
+            try:
+                if pygame.mixer.get_init():
+                    pygame.mixer.quit()
+            except Exception:
+                pass
             try:
                 screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
             except Exception as e:

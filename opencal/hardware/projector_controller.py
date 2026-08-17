@@ -173,9 +173,10 @@ class Projector:
 
     def set_volume(self, volume_percent: int) -> None:
         """Set HDMI projector audio volume as a percentage (0-100)."""
-        val = max(0, min(100, volume_percent)) / 100.0
+        val = max(0, min(100, volume_percent))
         try:
-            subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{val:.2f}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)
+            subprocess.run(["amixer", "set", "PCM", f"{val}%"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)
+            subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{val/100.0:.2f}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)
         except Exception as e:
             print(f"Error setting volume: {e}")
 
@@ -189,11 +190,15 @@ class Projector:
         env = os.environ.copy()
         env["DISPLAY"] = ":0"
 
+        # VLC gain (1.0 = 100%, 0.2 = 20%)
+        vlc_gain = max(0.0, min(2.0, volume / 50.0))
         command = [
             "/usr/bin/cvlc",
             "--fullscreen",
             "--no-video-title-show",
             "--play-and-exit",
+            "--aout=alsa",
+            f"--gain={vlc_gain:.2f}",
             str(video_path),
         ]
         self.process = subprocess.Popen(command, env=env)
