@@ -722,6 +722,8 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                             local_ip = ip
                             break
                 except Exception:
+                    pass
+
                 print_running = False
                 if self.print_controller:
                     print_running = getattr(self.print_controller, "running", False)
