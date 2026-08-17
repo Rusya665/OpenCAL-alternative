@@ -75,32 +75,25 @@ class LEDManager:
         self.neo.clear_strip()
         self.neo.update_strip()
 
-    def run_start_animation(self):
+    def run_red_pulse_animation(self, cycles: int = 8):
+        """Aggressive red pulsation / warning strobe animation."""
         if not self.neo:
             return
-        CYCLES = 5
-        DELAY = 0.5
-        ROWS, COLS = 8, 8
+        for _ in range(cycles):
+            # Fast aggressive ascent to full intensity
+            for val in range(10, 256, 18):
+                self.set_led((val, 0, 0), update=True)
+                time.sleep(0.012)
+            # High intensity peak flash
+            self.set_led((255, 20, 20), update=True)
+            time.sleep(0.05)
+            # Decay fade descent
+            for val in range(255, 5, -15):
+                self.set_led((val, 0, 0), update=True)
+                time.sleep(0.018)
+            self.clear_leds()
+            time.sleep(0.06)
 
-        group_1: list[int] = []
-        group_2: list[int] = []
-
-        for i in range(ROWS):
-            for j in range(COLS):
-                k = i // 2 + j // 2
-                idx = i * COLS + j
-                if k % 2 == 0:
-                    group_1.append(idx)
-                else:
-                    group_2.append(idx)
-
-        for _ in range(CYCLES):
-            self.set_led(YELLOW, group_1, update=False)
-            self.set_led(BLUE, group_2)
-            time.sleep(DELAY)
-
-            self.set_led(BLUE, group_1, update=False)
-            self.set_led(YELLOW, group_2)
-            time.sleep(DELAY)
-
-        self.clear_leds()
+    def run_start_animation(self):
+        """System startup LED sequence: Aggressive Red Pulsation."""
+        self.run_red_pulse_animation(cycles=4)

@@ -342,8 +342,9 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             </div>
 
             <div class="btn-group" style="margin-top: 14px;">
+                <button class="danger" onclick="animateLeds('red_pulse')">🚨 Aggressive Red Pulse</button>
                 <button onclick="animateLeds('rainbow')">🌈 Rainbow Animation</button>
-                <button onclick="animateLeds('pulse')">✨ Pulse Animation</button>
+                <button onclick="animateLeds('pulse')">✨ White Pulse</button>
             </div>
         </div>
 
@@ -877,7 +878,19 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
         if not self.hardware or not self.hardware.led_manager:
             return
         try:
-            if anim_name == "rainbow":
+            if anim_name == "red_pulse":
+                if hasattr(self.hardware.led_manager, "run_red_pulse_animation"):
+                    self.hardware.led_manager.run_red_pulse_animation(cycles=6)
+                else:
+                    for _ in range(6):
+                        for b in range(10, 256, 18):
+                            self.hardware.led_manager.set_led((b, 0, 0))
+                            time.sleep(0.012)
+                        for b in range(255, 5, -15):
+                            self.hardware.led_manager.set_led((b, 0, 0))
+                            time.sleep(0.018)
+                    self.hardware.led_manager.clear_leds()
+            elif anim_name == "rainbow":
                 for _ in range(3):
                     for color in [
                         (255, 0, 0), (255, 127, 0), (255, 255, 0), (0, 255, 0),
