@@ -193,8 +193,14 @@ class Projector:
             except Exception as e:
                 print(f"Error saving volume setting: {e}")
         try:
-            subprocess.run(["amixer", "set", "PCM", f"{val}%"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)
-            subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{val/100.0:.2f}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)
+            subprocess.run(["amixer", "-c", "0", "set", "PCM", f"{val}%"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)
+            subprocess.run(
+                ["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{val/100.0:.2f}"],
+                env={"XDG_RUNTIME_DIR": "/run/user/1000", "PATH": os.environ.get("PATH", "/usr/bin:/bin")},
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=1.0,
+            )
         except Exception as e:
             print(f"Error setting volume: {e}")
 

@@ -9,10 +9,14 @@ from pathlib import Path
 from typing import final
 
 SOUNDS_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "sounds"
-STARTUP_MP3 = SOUNDS_DIR / "win_xp_startup.mp3"
-SHUTDOWN_MP3 = SOUNDS_DIR / "win_xp_shutdown.mp3"
+STARTUP_WAV = SOUNDS_DIR / "win_xp_startup.wav"
+SHUTDOWN_WAV = SOUNDS_DIR / "win_xp_shutdown.wav"
 SCROLL_WAV = SOUNDS_DIR / "doom_scroll.wav"
 CLICK_WAV = SOUNDS_DIR / "doom_click.wav"
+
+# Fallbacks if WAVs are not yet generated
+STARTUP_MP3 = SOUNDS_DIR / "win_xp_startup.mp3"
+SHUTDOWN_MP3 = SOUNDS_DIR / "win_xp_shutdown.mp3"
 
 AUDIO_ENV = os.environ.copy()
 AUDIO_ENV["XDG_RUNTIME_DIR"] = "/run/user/1000"
@@ -24,8 +28,8 @@ AUDIO_ENV["PIPEWIRE_RUNTIME_DIR"] = "/run/user/1000"
 class SoundManager:
     """Manages audio effects, startup/shutdown jingles, and Doom-style menu navigation sounds.
 
-    Uses a dedicated non-blocking worker queue and ALSA/PipeWire subprocesses to ensure
-    100% thread-safety across GPIO interrupts, web threads, and LCD rendering loops.
+    Directly routes uncompressed PCM to the HDMI projector output via ALSA plughw:0,0
+    and PipeWire pw-play with zero external dependencies.
     """
 
     def __init__(self, sounds_enabled: bool = True) -> None:
@@ -33,6 +37,36 @@ class SoundManager:
         self._queue: queue.Queue[Path | None] = queue.Queue(maxsize=16)
         self._worker_thread = threading.Thread(target=self._audio_worker, daemon=True)
         self._worker_thread.start()
+
+    def _play_file(self, sound_file: Path, timeout: float = 5.0) -> None:
+        """Play audio file directly to HDMI output with fallback."""
+        if not sound_file.exists():
+            return
+        # 1. Try ALSA direct hardware output (HDMI card 0)
+        try:
+            res = subprocess.run(
+                ["aplay", "-D", "plughw:0,0", "-q", "-N", str(sound_file)],
+                env=AUDIO_ENV,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=timeout,
+            )
+            if res.returncode == 0:
+                return
+        except Exception:
+            pass
+
+        # 2. Fallback to PipeWire pw-play
+        try:
+            subprocess.run(
+                ["pw-play", str(sound_file)],
+                env=AUDIO_ENV,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=timeout,
+            )
+        except Exception:
+            pass
 
     def _audio_worker(self) -> None:
         """Sequential background audio playback worker."""
@@ -44,28 +78,12 @@ class SoundManager:
                 if not self.sounds_enabled or not sound_file.exists():
                     continue
 
-                if sound_file.suffix.lower() == ".wav":
-                    # Instantaneous low-latency playback for UI ticks
-                    subprocess.run(
-                        ["aplay", "-q", "-N", str(sound_file)],
-                        env=AUDIO_ENV,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        timeout=0.8,
-                    )
-                else:
-                    # MP3 playback for startup/shutdown jingles
-                    subprocess.run(
-                        ["mpv", "--no-video", "--really-quiet", str(sound_file)],
-                        env=AUDIO_ENV,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        timeout=6.0,
-                    )
+                timeout = 0.8 if sound_file in (SCROLL_WAV, CLICK_WAV) else 6.0
+                self._play_file(sound_file, timeout=timeout)
             except Exception:
                 pass
             finally:
-                time.sleep(0.01)
+                time.sleep(0.005)
 
     def set_enabled(self, enabled: bool, persist: bool = True) -> None:
         """Enable or disable system sounds and optionally save to config.json."""
@@ -101,24 +119,17 @@ class SoundManager:
 
     def play_startup(self) -> None:
         """Play Windows XP startup sound asynchronously on boot."""
-        if not self.sounds_enabled or not STARTUP_MP3.exists():
+        target = STARTUP_WAV if STARTUP_WAV.exists() else STARTUP_MP3
+        if not self.sounds_enabled or not target.exists():
             return
         try:
-            self._queue.put_nowait(STARTUP_MP3)
+            self._queue.put_nowait(target)
         except queue.Full:
             pass
 
     def play_shutdown(self, blocking: bool = True) -> None:
         """Play Windows XP shutdown sound synchronously before shutdown/reboot."""
-        if not self.sounds_enabled or not SHUTDOWN_MP3.exists():
+        target = SHUTDOWN_WAV if SHUTDOWN_WAV.exists() else SHUTDOWN_MP3
+        if not self.sounds_enabled or not target.exists():
             return
-        try:
-            subprocess.run(
-                ["mpv", "--no-video", "--really-quiet", str(SHUTDOWN_MP3)],
-                env=AUDIO_ENV,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=4.0,
-            )
-        except Exception as e:
-            print(f"Shutdown sound error: {e}")
+        self._play_file(target, timeout=4.2)
