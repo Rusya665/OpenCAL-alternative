@@ -1107,23 +1107,25 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/camera/record/start":
             try:
-                if self.hardware and self.hardware.camera:
-                    saved_file = self.hardware.camera.start_recording()
+                cam = getattr(self.hardware, "camera", None) or (getattr(self.print_controller, "hardware", None) and getattr(self.print_controller.hardware, "camera", None))
+                if cam:
+                    saved_file = cam.start_recording()
                     self._send_json({"message": f"Recording started: {saved_file.name}", "file": saved_file.name})
                 else:
-                    self._send_json({"error": "Camera not available"}, status=500)
+                    self._send_json({"error": "Camera not available on hardware controller"}, status=500)
             except Exception as e:
                 self._send_json({"error": str(e)}, status=500)
             return
 
         if parsed.path == "/api/camera/record/stop":
             try:
-                if self.hardware and self.hardware.camera:
-                    saved_file = self.hardware.camera.stop_recording()
+                cam = getattr(self.hardware, "camera", None) or (getattr(self.print_controller, "hardware", None) and getattr(self.print_controller.hardware, "camera", None))
+                if cam:
+                    saved_file = cam.stop_recording()
                     name = saved_file.name if saved_file else "recording.mp4"
                     self._send_json({"message": f"Recording saved: {name}", "file": name})
                 else:
-                    self._send_json({"error": "Camera not available"}, status=500)
+                    self._send_json({"error": "Camera not available on hardware controller"}, status=500)
             except Exception as e:
                 self._send_json({"error": str(e)}, status=500)
             return
