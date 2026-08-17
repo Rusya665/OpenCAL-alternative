@@ -130,6 +130,23 @@ class LCDDisplay:
             else:
                 self.backend = None
 
+    def render_page(self, lines: list[str]):
+        """Atomically update all 4 lines and send ONE 80-byte framebuffer frame."""
+        with self.lcd_lock:
+            for i in range(min(self.rows, len(lines))):
+                self.framebuffer[i] = lines[i][: self.cols]
+            self._update_lcd()
+
+    def set_backlight(self, level: int):
+        with self.lcd_lock:
+            if hasattr(self.backend, "set_backlight"):
+                self.backend.set_backlight(level)
+
+    def set_contrast(self, level: int):
+        with self.lcd_lock:
+            if hasattr(self.backend, "set_contrast"):
+                self.backend.set_contrast(level)
+
     def clear(self):
         """Clear the LCD display and reset the framebuffer."""
         with self.lcd_lock:

@@ -232,6 +232,17 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <div class="lcd-line" id="lcd-r3">[Knob: Turn to Nav] </div>
             </div>
 
+            <div class="slider-container" style="margin-bottom: 8px;">
+                <label style="margin: 0; min-width: 110px;">LCD Brightness:</label>
+                <input type="range" id="lcd-bright-slider" min="1" max="8" value="8" oninput="setLcdBrightness(this.value)">
+                <span class="slider-val" id="lcd-bright-val">8</span>
+            </div>
+            <div class="slider-container" style="margin-bottom: 12px;">
+                <label style="margin: 0; min-width: 110px;">LCD Contrast:</label>
+                <input type="range" id="lcd-contrast-slider" min="10" max="50" value="42" oninput="setLcdContrast(this.value)">
+                <span class="slider-val" id="lcd-contrast-val">42</span>
+            </div>
+
             <div class="btn-group" style="margin-bottom: 12px;">
                 <button onclick="prevDocPage()">◀️ Prev Doc Page</button>
                 <button onclick="nextDocPage()">▶️ Next Doc Page</button>
@@ -375,6 +386,14 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         }
 
         // LCD & Pager functions
+        function setLcdBrightness(v) {
+            document.getElementById('lcd-bright-val').innerText = v;
+            postAPI('/api/lcd/backlight', {backlight: parseInt(v)});
+        }
+        function setLcdContrast(v) {
+            document.getElementById('lcd-contrast-val').innerText = v;
+            postAPI('/api/lcd/contrast', {contrast: parseInt(v)});
+        }
         function prevDocPage() { postAPI('/api/pager/prev'); }
         function nextDocPage() { postAPI('/api/pager/next'); }
         function executeKnobAction() { postAPI('/api/pager/action'); }
@@ -569,13 +588,36 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
             self._send_json({"message": msg})
             return
 
-        # 2. LCD DIRECT WRITE
+        # 2. LCD CONTROLS
+        if parsed.path == "/api/lcd/backlight":
+            try:
+                val = int(data.get("backlight", 8))
+                if self.hardware and self.hardware.lcd:
+                    self.hardware.lcd.set_backlight(val)
+                self._send_json({"message": f"LCD Backlight set to {val}"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/lcd/contrast":
+            try:
+                val = int(data.get("contrast", 42))
+                if self.hardware and self.hardware.lcd:
+                    self.hardware.lcd.set_contrast(val)
+                self._send_json({"message": f"LCD Contrast set to {val}"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
         if parsed.path == "/api/lcd/write":
-            row = data.get("row", 0)
-            text = data.get("text", "")
-            if self.hardware and self.hardware.lcd:
-                self.hardware.lcd.write_message(text, row=row)
-            self._send_json({"message": f"Updated LCD row {row}"})
+            try:
+                row = data.get("row", 0)
+                text = data.get("text", "")
+                if self.hardware and self.hardware.lcd:
+                    self.hardware.lcd.write_message(text, row=row)
+                self._send_json({"message": f"Updated LCD row {row}"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
             return
 
         # 3. CAMERA CONTROLS
@@ -668,8 +710,7 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
     def _render_current_page(self):
         page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
         if self.hardware and self.hardware.lcd:
-            for idx, line in enumerate(page["lines"]):
-                self.hardware.lcd.write_message(line, row=idx)
+            self.hardware.lcd.render_page(page["lines"])
 
     def _trigger_page_action(self) -> str:
         page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
@@ -730,27 +771,20 @@ def rotary_hardware_listener(hardware: HardwareController):
     # Initialize LCD with Page 0
     page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
     if hardware.lcd:
-        for idx, line in enumerate(page["lines"]):
-            hardware.lcd.write_message(line, row=idx)
+        hardware.lcd.render_page(page["lines"])
 
     while True:
         try:
             current_step = hardware.rotary.get_steps()
             diff = current_step - last_step
-            if diff >= 2:  # Clockwise rotation
-                WebConsoleHandler.current_doc_page = (WebConsoleHandler.current_doc_page + 1) % len(OPENCAL_PAGES)
+            if diff != 0:  # Any physical click / detent
+                direction = 1 if diff > 0 else -1
+                WebConsoleHandler.current_doc_page = (WebConsoleHandler.current_doc_page + direction) % len(OPENCAL_PAGES)
                 page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
                 if hardware.lcd:
-                    for idx, line in enumerate(page["lines"]):
-                        hardware.lcd.write_message(line, row=idx)
+                    hardware.lcd.render_page(page["lines"])
                 last_step = current_step
-            elif diff <= -2:  # Counter-clockwise rotation
-                WebConsoleHandler.current_doc_page = (WebConsoleHandler.current_doc_page - 1) % len(OPENCAL_PAGES)
-                page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
-                if hardware.lcd:
-                    for idx, line in enumerate(page["lines"]):
-                        hardware.lcd.write_message(line, row=idx)
-                last_step = current_step
+                time.sleep(0.1)  # Smooth 100ms debounce
 
             # Button Click Check
             if hardware.rotary.was_button_pressed():
@@ -772,9 +806,9 @@ def rotary_hardware_listener(hardware: HardwareController):
                     hardware.stepper.start_rotation(direction="CW")
                 time.sleep(0.8)
                 if hardware.lcd:
-                    hardware.lcd.write_message(page["lines"][3], row=3)
+                    hardware.lcd.render_page(page["lines"])
 
-            time.sleep(0.05)
+            time.sleep(0.03)
         except Exception:
             time.sleep(0.1)
 
