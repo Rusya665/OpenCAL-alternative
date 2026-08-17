@@ -27,15 +27,17 @@ class VialWidthMode(BasePygameMode):
         self,
         app: "PygameApp",
         on_width_change: Callable[[int], None] | None = None,
+        initial_width: int | None = None,
     ) -> None:
         super().__init__(app)
-        self.rect_width: int = self.INITIAL_WIDTH
+        self._initial_width = initial_width if initial_width is not None else self.INITIAL_WIDTH
+        self.rect_width: int = self._initial_width
         self._font: pygame.font.Font | None = None
         self._on_width_change = on_width_change
 
     @override
     def on_activate(self) -> None:
-        self.rect_width = self.INITIAL_WIDTH
+        self.rect_width = self._initial_width
         self._font = pygame.font.Font(None, 60)
         if self._on_width_change:
             self._on_width_change(self.rect_width)

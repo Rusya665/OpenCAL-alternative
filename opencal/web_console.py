@@ -303,6 +303,12 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <div style="padding: 10px; text-align: center; color: var(--text-muted); font-size: 12px;">Scanning print files...</div>
             </div>
 
+            <div class="slider-container" style="margin-top: 10px;">
+                <label style="min-width: 90px;">Vial Width:</label>
+                <input type="range" id="vial-width-slider" min="50" max="600" step="5" value="200" oninput="setVialWidth(this.value)">
+                <span class="slider-val" id="vial-width-val">200 px</span>
+            </div>
+
             <div class="slider-container">
                 <label style="min-width: 90px;">Print RPM:</label>
                 <input type="range" id="print-rpm-slider" min="1" max="60" step="0.5" value="9.0" oninput="updatePrintRPM(this.value)">
@@ -579,7 +585,11 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             }
         }
 
-        // Print functions
+        // Print & Vial functions
+        function setVialWidth(w) {
+            document.getElementById('vial-width-val').innerText = w + ' px';
+            postAPI('/api/projector/vial_width', {width: parseInt(w)});
+        }
         function updatePrintRPM(v) { document.getElementById('print-rpm-val').innerText = v + ' RPM'; }
         async function fetchPrintFiles() {
             try {
@@ -714,6 +724,13 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 if (data.print_job) {
                     document.getElementById('print-status-badge').innerText = data.print_job.status;
                     document.getElementById('print-status-badge').style.color = data.print_job.running ? 'var(--accent-green)' : 'var(--accent-amber)';
+                }
+                if (data.vial_width_px !== undefined) {
+                    const slider = document.getElementById('vial-width-slider');
+                    if (slider && !slider.matches(':active')) {
+                        slider.value = data.vial_width_px;
+                        document.getElementById('vial-width-val').innerText = data.vial_width_px + ' px';
+                    }
                 }
             } catch (e) {}
         }
@@ -934,6 +951,11 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                         },
                         "projector_volume": self.hardware.projector.get_volume() if (self.hardware and self.hardware.projector) else 20,
                         "camera_recording": self.hardware.camera.is_recording() if (self.hardware and self.hardware.camera) else False,
+                        "vial_width_px": (
+                            self.hardware.projector.get_vial_width()
+                            if (self.hardware and self.hardware.projector)
+                            else getattr(self.print_controller, "vial_width_px", 200)
+                        ),
                     }
                 )
             except Exception as e:
@@ -1376,6 +1398,19 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                     self._send_json({"message": "Projector reboot cycle started..."})
                 else:
                     self._send_json({"error": "Projector not available"}, status=500)
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/projector/vial_width":
+            try:
+                w = int(data.get("width", 200))
+                proj = getattr(self.hardware, "projector", None) or (getattr(self.print_controller, "hardware", None) and getattr(self.print_controller.hardware, "projector", None))
+                if proj:
+                    proj.set_vial_width(w, persist=True)
+                if self.print_controller:
+                    self.print_controller.vial_width_px = w
+                self._send_json({"message": f"Vial width set to {w} px & saved to config!"})
             except Exception as e:
                 self._send_json({"error": str(e)}, status=500)
             return

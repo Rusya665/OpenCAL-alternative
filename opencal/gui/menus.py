@@ -438,7 +438,12 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
     def _apply_vial_result(result: dict) -> None:
         width = result.get("vial_width")
         if width is not None:
-            pc.hardware.projector.vial_width = int(width)
+            w = int(width)
+            if pc.hardware and pc.hardware.projector:
+                pc.hardware.projector.set_vial_width(w, persist=True)
+            pc.vial_width_px = w
+            _vial_px[0] = w
+            gui.splash(f"Vial Width: {w}px\nSaved to config!", 1.5)
 
     def _capture_image() -> None:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -462,7 +467,7 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
         Path(__file__).parent.parent / "utils" / "calibration" / "alignment_tool.png"
     )
 
-    _vial_px = [200]  # mutable container shared between vial mode callback and LCD render
+    _vial_px = [pc.hardware.projector.get_vial_width() if (pc.hardware and pc.hardware.projector) else 200]
 
     def _make_experimental_items() -> list[MenuBase]:
         exp_dir = Path.home() / "OpenCAL-alternative" / "experimental"
@@ -531,7 +536,7 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
             title="Find Vial Width",
             input_q=input_q,
             mode_name="vial_width",
-            mode_kwargs={"on_width_change": lambda w: _vial_px.__setitem__(0, w)},
+            mode_kwargs={"initial_width": _vial_px[0], "on_width_change": lambda w: _vial_px.__setitem__(0, w)},
             on_exit_callback=_apply_vial_result,
             lcd_lines=lambda: [
                 "-- Vial Width --",

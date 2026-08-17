@@ -122,8 +122,25 @@ class ProjectorConfig:
         self.default_print_size: int = config["default_print_size"]
         self.calibration_img_path: str = config["calibration_img_path"]
         self.calibration_dir_path: str = config["calibration_dir_path"]
+        self.vial_width_px: int = int(config.get("vial_width_px", 200))
+
+
+def save_vial_width(width: int, path: Path = CFG_PATH) -> None:
+    """Persist calibrated vial width in pixels to config.json."""
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        if "projector" not in data:
+            data["projector"] = {}
+        data["projector"]["vial_width_px"] = int(width)
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+        print(f"✓ Saved vial_width_px = {width} to {path}")
+    except Exception as e:
+        print(f"Error saving vial width to {path}: {e}")
 
 
 class UIConfig:
     def __init__(self, config: dict[str, Any]):
         self.prompt_usb_video_save: bool = config["prompt_usb_video_save"]
+

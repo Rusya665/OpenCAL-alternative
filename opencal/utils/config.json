@@ -59,6 +59,7 @@
   },
   "projector": {
     "default_print_size": 100,
+    "vial_width_px": 200,
     "calibration_img_path": "/home/opencal/OpenCAL/opencal/utils/calibration/OpenCAL_Alignment_Calibration_Image.png",
     "calibration_dir_path": "/home/opencal/OpenCAL/opencal/utils/calibration"
   },

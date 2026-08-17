@@ -51,7 +51,7 @@ class Projector:
         self.size = config.default_print_size
         self.calibration_img_path = Path(config.calibration_img_path)
         self.calibration_dir_path = Path(config.calibration_dir_path)
-        # FIXME: Figure out where to put vial width config
+        self.vial_width: int = getattr(config, "vial_width_px", 200)
         self.process = None
         self.thread = None  # We'll use this to keep track of the playback thread.
         self._orientation = None
@@ -304,15 +304,25 @@ class Projector:
         self.thread = threading.Thread(target=self.play_video_with_vlc, args=(video_path,))
         self.thread.start()
 
+    def get_vial_width(self) -> int:
+        """Get current calibrated vial width in pixels."""
+        return getattr(self, "vial_width", 200)
+
+    def set_vial_width(self, width: int, persist: bool = True) -> None:
+        """Set calibrated vial width in pixels and optionally persist to config.json."""
+        self.vial_width = max(10, int(width))
+        if persist:
+            try:
+                from opencal.utils.config import save_vial_width
+                save_vial_width(self.vial_width)
+            except Exception as e:
+                print(f"Error persisting vial width: {e}")
+
     def show_vial_width(self, width: int):
         """
         Display a rectangle to calibrate the vial width.
         """
-        self.vial_width = width
-        # FIXME: Screen dimensions are hardcoded. Query them dynamically using
-        # e.g. `xrandr --query` (X11) or `wlr-randr` (Wayland) so the
-        # calibration rectangle scales correctly on any projector resolution.
-        # See wayfire.ini in rootfs-overlay for display configuration notes.
+        self.set_vial_width(width, persist=False)
         w, h = 1920, 1080
         arr = np.zeros((h, w), dtype=np.uint8)
         cx, cy = w // 2, h // 2
