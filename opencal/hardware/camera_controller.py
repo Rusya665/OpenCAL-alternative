@@ -34,11 +34,10 @@ class CameraController:
         self._proc = None
         self._raw_file = None
         self.fps = 20
-        self.recording = False
-
         self._focus_diopters: float = 9.5
         self._awb_enable: bool = config.awb_enable
         self._colour_gains: tuple[float, float] = config.colour_gains
+        self._cam_lock = threading.RLock()
 
         if HAS_PICAMERA2:
             try:
@@ -105,27 +104,29 @@ class CameraController:
         """Capture a direct JPEG frame from memory for 30 FPS MJPEG streaming."""
         if not self.picam:
             return None
-        try:
-            if not self.picam.started:
-                try:
-                    preview_config = self.picam.create_preview_configuration(main={"size": (1280, 720)})
-                    self.picam.configure(preview_config)
-                    self.picam.start()
-                    self._apply_controls()
-                except Exception:
-                    pass
-            import io
-            stream = io.BytesIO()
-            self.picam.capture_file(stream, format="jpeg")
-            return stream.getvalue()
-        except Exception:
-            return None
+        with self._cam_lock:
+            try:
+                if not self.picam.started:
+                    try:
+                        preview_config = self.picam.create_preview_configuration(main={"size": (1280, 720)})
+                        self.picam.configure(preview_config)
+                        self.picam.start()
+                        self._apply_controls()
+                    except Exception:
+                        pass
+                import io
+                stream = io.BytesIO()
+                self.picam.capture_file(stream, format="jpeg")
+                return stream.getvalue()
+            except Exception:
+                return None
 
     def activate_autofocus(self):
         if not self.picam or not controls:
             print("WARNING: No camera connected, cannot activate autofocus.")
             return
-        self.picam.set_controls({"AfMode": controls.AfModeEnum.Continuous})
+        with self._cam_lock:
+            self.picam.set_controls({"AfMode": controls.AfModeEnum.Continuous})
 
     def start_recording(self, file: Path | None = None) -> Path:
         if not self.picam:
@@ -136,44 +137,46 @@ class CameraController:
             rec_dir.mkdir(parents=True, exist_ok=True)
             file = rec_dir / f"recording_{ts}.mp4"
 
-        if self.picam.started:
+        with self._cam_lock:
+            self._recording = True
+            self.recording = True
+            if self.picam.started:
+                try:
+                    self.picam.stop()
+                except Exception:
+                    pass
+
+            video_config = self.picam.create_video_configuration(main={"size": (1280, 720)})
+            if controls:
+                video_config["controls"]["AfMode"] = controls.AfModeEnum.Continuous
+            self.picam.configure(video_config)
+            encoder = H264Encoder()
             try:
-                self.picam.stop()
+                from picamera2.outputs import FfmpegOutput
+                output = FfmpegOutput(str(file))
             except Exception:
-                pass
+                output = str(file)
 
-        video_config = self.picam.create_video_configuration(main={"size": (1280, 720)})
-        if controls:
-            video_config["controls"]["AfMode"] = controls.AfModeEnum.Continuous
-        self.picam.configure(video_config)
-        encoder = H264Encoder()
-        try:
-            from picamera2.outputs import FfmpegOutput
-            output = FfmpegOutput(str(file))
-        except Exception:
-            output = str(file)
-
-        self.picam.start_recording(encoder=encoder, output=output)
-        self._current_recording_file = file
-        self._recording = True
-        self.recording = True
-        print(f"DEBUG: Camera recording started -> {file}")
-        return file
+            self.picam.start_recording(encoder=encoder, output=output)
+            self._current_recording_file = file
+            print(f"DEBUG: Camera recording started -> {file}")
+            return file
 
     def stop_recording(self) -> Path | None:
         if not self.picam:
             return None
-        saved_file = getattr(self, "_current_recording_file", None)
-        if self._recording:
-            print(f"DEBUG: stopping camera recording -> {saved_file}")
-            try:
-                self.picam.stop_recording()
-            except Exception as e:
-                print(f"Error stopping recording: {e}")
-            self._recording = False
-            self.recording = False
-            self._current_recording_file = None
-        return saved_file
+        with self._cam_lock:
+            saved_file = getattr(self, "_current_recording_file", None)
+            if self._recording:
+                print(f"DEBUG: stopping camera recording -> {saved_file}")
+                try:
+                    self.picam.stop_recording()
+                except Exception as e:
+                    print(f"Error stopping recording: {e}")
+                self._recording = False
+                self.recording = False
+                self._current_recording_file = None
+            return saved_file
 
     def is_recording(self) -> bool:
         return bool(self._recording)
