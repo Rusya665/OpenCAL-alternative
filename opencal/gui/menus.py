@@ -468,6 +468,17 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
     )
 
     _vial_px = [pc.hardware.projector.get_vial_width() if (pc.hardware and pc.hardware.projector) else 200]
+    _align_y = [pc.hardware.projector.get_alignment_offset() if (pc.hardware and pc.hardware.projector) else 0]
+
+    def _apply_alignment_result(result: dict) -> None:
+        offset = result.get("y_offset")
+        if offset is not None:
+            off = int(offset)
+            if pc.hardware and pc.hardware.projector:
+                pc.hardware.projector.set_alignment_offset(off, persist=True)
+            _align_y[0] = off
+            sign = "+" if off > 0 else ""
+            gui.splash(f"Alignment Offset:\n{sign}{off} px Saved", 1.5)
 
     def _make_experimental_items() -> list[MenuBase]:
         exp_dir = Path.home() / "OpenCAL-alternative" / "experimental"
@@ -523,12 +534,17 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
             title="Show Alignment",
             input_q=input_q,
             mode_name="alignment",
-            mode_kwargs={"image_path": _ALIGNMENT_IMAGE},
-            lcd_lines=[
+            mode_kwargs={
+                "image_path": _ALIGNMENT_IMAGE,
+                "initial_y_offset": _align_y[0],
+                "on_offset_change": lambda off: _align_y.__setitem__(0, off),
+            },
+            on_exit_callback=_apply_alignment_result,
+            lcd_lines=lambda: [
                 "-- Alignment --",
+                f"Offset: {'+' if _align_y[0] > 0 else ''}{_align_y[0]} px",
                 "Knob: shift up/down",
-                " ",
-                "Click to return",
+                "Click to save",
             ],
         ),
         ActionItem("USB video prompt", _toggle_usb_video_prompt),

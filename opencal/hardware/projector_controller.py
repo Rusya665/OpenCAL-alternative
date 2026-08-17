@@ -52,6 +52,7 @@ class Projector:
         self.calibration_img_path = Path(config.calibration_img_path)
         self.calibration_dir_path = Path(config.calibration_dir_path)
         self.vial_width: int = getattr(config, "vial_width_px", 200)
+        self.alignment_y_offset: int = getattr(config, "alignment_y_offset_px", 0)
         self.process = None
         self.thread = None  # We'll use this to keep track of the playback thread.
         self._orientation = None
@@ -317,6 +318,20 @@ class Projector:
                 save_vial_width(self.vial_width)
             except Exception as e:
                 print(f"Error persisting vial width: {e}")
+
+    def get_alignment_offset(self) -> int:
+        """Get current optical alignment Y-offset in pixels."""
+        return getattr(self, "alignment_y_offset", 0)
+
+    def set_alignment_offset(self, offset: int, persist: bool = True) -> None:
+        """Set optical alignment Y-offset in pixels and optionally persist to config.json."""
+        self.alignment_y_offset = int(offset)
+        if persist:
+            try:
+                from opencal.utils.config import save_alignment_offset
+                save_alignment_offset(self.alignment_y_offset)
+            except Exception as e:
+                print(f"Error persisting alignment offset: {e}")
 
     def show_vial_width(self, width: int):
         """

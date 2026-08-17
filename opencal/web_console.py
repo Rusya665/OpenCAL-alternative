@@ -262,6 +262,12 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <span class="slider-val" id="focus-val">9.5 D</span>
             </div>
 
+            <div class="slider-container" style="margin-top: 10px;">
+                <label style="min-width: 90px;">Beam Align Y:</label>
+                <input type="range" id="align-y-slider" min="-200" max="200" step="5" value="0" oninput="setAlignmentOffset(this.value)">
+                <span class="slider-val" id="align-y-val">0 px</span>
+            </div>
+
             <div class="btn-group">
                 <button class="primary" onclick="triggerAutofocus()">🎯 Auto-Focus</button>
                 <button onclick="toggleCrosshair()">📐 Crosshair Overlay</button>
@@ -585,6 +591,13 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             }
         }
 
+        // Optical Alignment function
+        function setAlignmentOffset(val) {
+            const sign = parseInt(val) > 0 ? '+' : '';
+            document.getElementById('align-y-val').innerText = sign + val + ' px';
+            postAPI('/api/projector/alignment_offset', {offset: parseInt(val)});
+        }
+
         // Print & Vial functions
         function setVialWidth(w) {
             document.getElementById('vial-width-val').innerText = w + ' px';
@@ -730,6 +743,14 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                     if (slider && !slider.matches(':active')) {
                         slider.value = data.vial_width_px;
                         document.getElementById('vial-width-val').innerText = data.vial_width_px + ' px';
+                    }
+                }
+                if (data.alignment_y_offset_px !== undefined) {
+                    const slider = document.getElementById('align-y-slider');
+                    if (slider && !slider.matches(':active')) {
+                        slider.value = data.alignment_y_offset_px;
+                        const sign = data.alignment_y_offset_px > 0 ? '+' : '';
+                        document.getElementById('align-y-val').innerText = sign + data.alignment_y_offset_px + ' px';
                     }
                 }
             } catch (e) {}
@@ -958,6 +979,11 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                             self.hardware.projector.get_vial_width()
                             if (self.hardware and self.hardware.projector)
                             else getattr(self.print_controller, "vial_width_px", 200)
+                        ),
+                        "alignment_y_offset_px": (
+                            self.hardware.projector.get_alignment_offset()
+                            if (self.hardware and self.hardware.projector)
+                            else 0
                         ),
                     }
                 )
@@ -1414,6 +1440,18 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 if self.print_controller:
                     self.print_controller.vial_width_px = w
                 self._send_json({"message": f"Vial width set to {w} px & saved to config!"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/projector/alignment_offset":
+            try:
+                off = int(data.get("offset", 0))
+                proj = getattr(self.hardware, "projector", None) or (getattr(self.print_controller, "hardware", None) and getattr(self.print_controller.hardware, "projector", None))
+                if proj:
+                    proj.set_alignment_offset(off, persist=True)
+                sign = "+" if off > 0 else ""
+                self._send_json({"message": f"Alignment offset set to {sign}{off} px & saved to config!"})
             except Exception as e:
                 self._send_json({"error": str(e)}, status=500)
             return

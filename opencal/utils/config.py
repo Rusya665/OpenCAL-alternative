@@ -123,6 +123,7 @@ class ProjectorConfig:
         self.calibration_img_path: str = config["calibration_img_path"]
         self.calibration_dir_path: str = config["calibration_dir_path"]
         self.vial_width_px: int = int(config.get("vial_width_px", 200))
+        self.alignment_y_offset_px: int = int(config.get("alignment_y_offset_px", 0))
 
 
 def save_vial_width(width: int, path: Path = CFG_PATH) -> None:
@@ -138,6 +139,21 @@ def save_vial_width(width: int, path: Path = CFG_PATH) -> None:
         print(f"✓ Saved vial_width_px = {width} to {path}")
     except Exception as e:
         print(f"Error saving vial width to {path}: {e}")
+
+
+def save_alignment_offset(offset: int, path: Path = CFG_PATH) -> None:
+    """Persist optical alignment Y-offset in pixels to config.json."""
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        if "projector" not in data:
+            data["projector"] = {}
+        data["projector"]["alignment_y_offset_px"] = int(offset)
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+        print(f"✓ Saved alignment_y_offset_px = {offset} to {path}")
+    except Exception as e:
+        print(f"Error saving alignment offset to {path}: {e}")
 
 
 class UIConfig:
