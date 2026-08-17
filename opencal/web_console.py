@@ -794,6 +794,7 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                             "running": print_running,
                             "status": "PRINTING (Active)" if print_running else "IDLE / Ready",
                         },
+                        "projector_volume": self.hardware.projector.get_volume() if (self.hardware and self.hardware.projector) else 20,
                     }
                 )
             except Exception as e:

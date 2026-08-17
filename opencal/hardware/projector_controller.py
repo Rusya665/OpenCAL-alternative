@@ -52,11 +52,11 @@ class Projector:
         self.calibration_img_path = Path(config.calibration_img_path)
         self.calibration_dir_path = Path(config.calibration_dir_path)
         # FIXME: Figure out where to put vial width config
-        self.vial_width = 384  # Measured for small vial
-
         self.process = None
         self.thread = None  # We'll use this to keep track of the playback thread.
         self._orientation = None
+        self.volume = 20  # Boot default: 20%
+        self.set_volume(20)
 
     def get_projector_orientation(self) -> ProjectorOrientation:
         """Query display orientation from wlr-randr, so that it cannot silently be changed in the background."""
@@ -162,36 +162,45 @@ class Projector:
 
     def get_volume(self) -> int:
         """Get current HDMI projector audio volume as a percentage (0-100)."""
-        try:
-            out = subprocess.check_output(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], timeout=1.0, text=True)
-            parts = out.strip().split()
-            if len(parts) >= 2:
-                return int(round(float(parts[1]) * 100))
-        except Exception:
-            pass
-        return 20
+        return getattr(self, "volume", 20)
 
     def set_volume(self, volume_percent: int) -> None:
-        """Set HDMI projector audio volume as a percentage (0-100)."""
-        val = max(0, min(100, volume_percent))
+        """Set HDMI projector audio volume as a percentage (0-100) and remember it."""
+        self.volume = max(0, min(100, int(volume_percent)))
+        val = self.volume
         try:
             subprocess.run(["amixer", "set", "PCM", f"{val}%"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)
             subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{val/100.0:.2f}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)
         except Exception as e:
             print(f"Error setting volume: {e}")
 
-    def play_experimental_video(self, video_path: Path, volume: int = 20):
-        """Play an experimental video fullscreen on the projector with audio enabled."""
+    def turn_on_projector(self) -> None:
+        """Send HDMI-CEC signal to wake up and power on the projector."""
+        try:
+            subprocess.run(
+                ["bash", "-c", "echo 'on 0.0.0.0' | cec-client -s -d 1 ; echo 'as' | cec-client -s -d 1"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2.0
+            )
+        except Exception:
+            pass
+
+    def play_experimental_video(self, video_path: Path, volume: int | None = None):
+        """Play an experimental video fullscreen on the projector with audio enabled at remembered volume."""
         if self.process:
             self.stop_video()
 
-        self.set_volume(volume)
+        if volume is not None:
+            self.set_volume(volume)
+        else:
+            self.set_volume(self.volume)
 
         env = os.environ.copy()
         env["DISPLAY"] = ":0"
 
         # VLC gain (1.0 = 100%, 0.2 = 20%)
-        vlc_gain = max(0.0, min(2.0, volume / 50.0))
+        vlc_gain = max(0.0, min(2.0, self.volume / 50.0))
         command = [
             "/usr/bin/cvlc",
             "--fullscreen",
@@ -202,7 +211,7 @@ class Projector:
             str(video_path),
         ]
         self.process = subprocess.Popen(command, env=env)
-        print(f"Playing experimental video: {video_path} at volume {volume}%")
+        print(f"Playing experimental video: {video_path} at volume {self.volume}%")
 
     def stop_video(self):
         """
