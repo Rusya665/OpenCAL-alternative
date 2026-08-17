@@ -101,6 +101,26 @@ class CameraController:
         self._focus_diopters = diopters
         self.picam.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": diopters})
 
+    def get_jpeg_frame(self) -> bytes | None:
+        """Capture a direct JPEG frame from memory for 30 FPS MJPEG streaming."""
+        if not self.picam:
+            return None
+        try:
+            if not self.picam.started:
+                try:
+                    preview_config = self.picam.create_preview_configuration(main={"size": (1280, 720)})
+                    self.picam.configure(preview_config)
+                    self.picam.start()
+                    self._apply_controls()
+                except Exception:
+                    pass
+            import io
+            stream = io.BytesIO()
+            self.picam.capture_file(stream, format="jpeg")
+            return stream.getvalue()
+        except Exception:
+            return None
+
     def activate_autofocus(self):
         if not self.picam or not controls:
             print("WARNING: No camera connected, cannot activate autofocus.")

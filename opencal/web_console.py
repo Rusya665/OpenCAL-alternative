@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import json
 import os
 import threading
@@ -10,6 +11,76 @@ from opencal.utils.config import Config
 from opencal.hardware.hardware_controller import HardwareController
 from opencal.hardware.led_manager import RED, GREEN, BLUE, YELLOW, WHITE, OFF
 
+# OpenCAL Interactive Documentation & Control Pages for Rotary Knob
+OPENCAL_PAGES = [
+    {
+        "title": "SYSTEM DASHBOARD",
+        "lines": [
+            "OpenCAL 3D Printer  ",
+            "Hardware: ONLINE    ",
+            "IP: 10.49.26.109    ",
+            "[Knob: Turn to Nav] "
+        ],
+        "action": "refresh",
+        "action_desc": "Refreshed Status"
+    },
+    {
+        "title": "STEPPER MOTOR JOG",
+        "lines": [
+            "== VAM ROTATION ==  ",
+            "Target: 9.0 RPM     ",
+            "1/16 Microstepping  ",
+            "[Press: 360 Spin]   "
+        ],
+        "action": "jog_motor_360",
+        "action_desc": "Jogged 360 Degrees"
+    },
+    {
+        "title": "64-LED RING CONTROL",
+        "lines": [
+            "== 64-LED RING ==   ",
+            "Pattern: Rainbow Arc",
+            "Brightness: 100%    ",
+            "[Press: LED Rainbow]"
+        ],
+        "action": "run_rainbow",
+        "action_desc": "Rainbow Animation"
+    },
+    {
+        "title": "CAMERA IMX708 FOCUS",
+        "lines": [
+            "== CAMERA IMX708 == ",
+            "Sony 12MP Autofocus ",
+            "Stream: 30 FPS Live ",
+            "[Press: Auto-Focus] "
+        ],
+        "action": "trigger_autofocus",
+        "action_desc": "Triggered Autofocus"
+    },
+    {
+        "title": "VAM PRINT PROCESS",
+        "lines": [
+            "== VAM PRINTING ==  ",
+            "Computed Axial Litho",
+            "Vial Rotation Ready ",
+            "[Press: Start Print]"
+        ],
+        "action": "start_print_demo",
+        "action_desc": "VAM Print Demo Started"
+    },
+    {
+        "title": "ABOUT OPENCAL",
+        "lines": [
+            "OpenCAL 2026 Build  ",
+            "VAM Volumetric Print",
+            "Univ of Turku Lab   ",
+            "[Knob: Turn to Nav] "
+        ],
+        "action": "refresh",
+        "action_desc": "About OpenCAL"
+    }
+]
+
 HTML_DASHBOARD = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -20,8 +91,8 @@ HTML_DASHBOARD = """<!DOCTYPE html>
     <style>
         :root {
             --bg-primary: #0a0e17;
-            --bg-card: rgba(20, 27, 45, 0.75);
-            --border-card: rgba(64, 93, 150, 0.25);
+            --bg-card: rgba(20, 27, 45, 0.85);
+            --border-card: rgba(64, 93, 150, 0.3);
             --accent-cyan: #00f0ff;
             --accent-blue: #3b82f6;
             --accent-green: #10b981;
@@ -29,8 +100,8 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             --accent-rose: #f43f5e;
             --text-main: #f1f5f9;
             --text-muted: #94a3b8;
-            --lcd-bg: #002244;
-            --lcd-text: #66e0ff;
+            --lcd-bg: #001a33;
+            --lcd-text: #55eeff;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Outfit', sans-serif; }
@@ -38,14 +109,14 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         
         header {
             display: flex; justify-content: space-between; align-items: center;
-            max-width: 1200px; margin: 0 auto 28px; padding-bottom: 16px;
+            max-width: 1300px; margin: 0 auto 24px; padding-bottom: 16px;
             border-bottom: 1px solid var(--border-card);
         }
         h1 { font-size: 26px; font-weight: 700; background: linear-gradient(135deg, #00f0ff, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .badge { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; border: 1px solid rgba(16, 185, 129, 0.3); display: flex; align-items: center; gap: 6px; }
         .pulse-dot { width: 8px; height: 8px; background: var(--accent-green); border-radius: 50%; box-shadow: 0 0 8px var(--accent-green); }
 
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px; max-width: 1200px; margin: 0 auto; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 24px; max-width: 1300px; margin: 0 auto; }
         
         .card {
             background: var(--bg-card); border: 1px solid var(--border-card);
@@ -53,17 +124,17 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             box-shadow: 0 10px 30px rgba(0,0,0,0.3); transition: transform 0.2s ease, border-color 0.2s ease;
         }
         .card:hover { border-color: rgba(0, 240, 255, 0.4); transform: translateY(-2px); }
-        .card-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; color: var(--text-main); }
+        .card-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; color: var(--text-main); }
         
         /* LCD Component */
         .lcd-screen {
-            background: var(--lcd-bg); border: 3px solid #001122; border-radius: 8px;
-            padding: 12px 16px; font-family: 'JetBrains Mono', monospace; font-size: 16px;
+            background: var(--lcd-bg); border: 3px solid #000d1a; border-radius: 8px;
+            padding: 14px 18px; font-family: 'JetBrains Mono', monospace; font-size: 17px;
             color: var(--lcd-text); letter-spacing: 2px; line-height: 1.5;
-            box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 0 15px rgba(0, 240, 255, 0.15);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.9), 0 0 15px rgba(0, 240, 255, 0.2);
             margin-bottom: 16px;
         }
-        .lcd-line { white-space: pre; min-height: 24px; }
+        .lcd-line { white-space: pre; min-height: 26px; }
         
         .form-group { margin-bottom: 12px; }
         label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
@@ -78,332 +149,284 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         button {
             padding: 10px 16px; background: rgba(59, 130, 246, 0.2);
             border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 8px;
-            color: var(--text-main); font-weight: 600; font-size: 14px;
-            cursor: pointer; transition: all 0.15s ease;
+            color: var(--text-main); font-weight: 600; font-size: 13px;
+            cursor: pointer; transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px;
         }
-        button:hover { background: rgba(59, 130, 246, 0.4); border-color: var(--accent-cyan); transform: scale(1.02); }
+        button:hover { background: rgba(59, 130, 246, 0.4); border-color: var(--accent-blue); }
+        button.primary { background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan)); border: none; color: #000; font-weight: 700; }
+        button.primary:hover { opacity: 0.9; box-shadow: 0 0 12px rgba(0, 240, 255, 0.4); }
         button.danger { background: rgba(244, 63, 94, 0.2); border-color: rgba(244, 63, 94, 0.4); color: #fda4af; }
         button.danger:hover { background: rgba(244, 63, 94, 0.4); }
         button.success { background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4); color: #6ee7b7; }
         button.success:hover { background: rgba(16, 185, 129, 0.4); }
 
-        /* Color Buttons */
-        .color-palette { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-        .color-btn { width: 38px; height: 38px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); cursor: pointer; transition: transform 0.15s ease; }
-        .color-btn:hover { transform: scale(1.15); border-color: white; }
-
-        /* Telemetry Readouts */
-        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
-        .stat-box { background: rgba(10, 14, 23, 0.6); padding: 12px; border-radius: 8px; border: 1px solid var(--border-card); }
-        .stat-value { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--accent-cyan); }
-        .stat-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; }
-
-        /* Slider */
-        .range-wrap { display: flex; align-items: center; gap: 12px; }
+        /* Sliders */
+        .slider-container { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
         input[type="range"] { flex: 1; accent-color: var(--accent-cyan); }
+        .slider-val { font-family: 'JetBrains Mono', monospace; font-size: 14px; min-width: 45px; color: var(--accent-cyan); }
+
+        /* Camera Stream */
+        .cam-feed {
+            width: 100%; height: 260px; background: #000; border-radius: 8px;
+            border: 1px solid var(--border-card); object-fit: cover; margin-bottom: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        /* Telemetry Pill */
+        .telemetry-row { display: flex; justify-content: space-between; padding: 8px 12px; background: rgba(10, 14, 23, 0.5); border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
+        .telemetry-label { color: var(--text-muted); }
+        .telemetry-val { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--accent-cyan); }
+
+        /* Toast notification */
+        #toast {
+            position: fixed; bottom: 24px; right: 24px; background: var(--bg-card);
+            border: 1px solid var(--accent-cyan); padding: 12px 20px; border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5); color: var(--text-main);
+            transform: translateY(100px); opacity: 0; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            font-size: 14px; z-index: 1000;
+        }
+        #toast.show { transform: translateY(0); opacity: 1; }
     </style>
 </head>
 <body>
     <header>
         <div>
-            <h1>OpenCAL Hardware Control Suite</h1>
-            <p style="color: var(--text-muted); font-size: 14px;">Interactive Diagnostic & Testing Dashboard</p>
+            <h1>OpenCAL Hardware Suite</h1>
+            <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Computed Axial Lithography (VAM) Controller</div>
         </div>
-        <div class="badge">
-            <div class="pulse-dot"></div>
-            <span>Connected: Raspberry Pi 5</span>
-        </div>
+        <div class="badge"><div class="pulse-dot"></div> <span id="system-status">SYSTEM ONLINE</span></div>
     </header>
 
     <div class="grid">
-        <!-- 1. LCD Screen Controller -->
+        <!-- 1. LIVE 30 FPS CAMERA FEED (IMX708) -->
+        <div class="card" style="grid-column: span 1;">
+            <div class="card-title">
+                <span>📹 Live Camera Stream (30 FPS)</span>
+                <span id="cam-badge" style="font-size: 12px; color: var(--accent-green);">Sony IMX708 Active</span>
+            </div>
+            <img id="cam-stream" class="cam-feed" src="/api/camera/stream" alt="Live Camera Stream">
+            
+            <div class="slider-container">
+                <label style="margin: 0;">Lens Focus:</label>
+                <input type="range" id="focus-slider" min="0" max="15" step="0.5" value="9.5" oninput="setFocus(this.value)">
+                <span class="slider-val" id="focus-val">9.5 D</span>
+            </div>
+
+            <div class="btn-group" style="margin-top: 14px;">
+                <button class="primary" onclick="triggerAutofocus()">🎯 Auto-Focus</button>
+                <button onclick="toggleStream()">⏯️ Toggle Stream</button>
+                <button onclick="takeSnapshot()">📸 Full Snapshot</button>
+            </div>
+        </div>
+
+        <!-- 2. LCD DISPLAY & PHYSICAL ROTARY KNOB PAGER -->
+        <div class="card" style="grid-column: span 1;">
+            <div class="card-title">
+                <span>📟 20x4 LCD Mirror & Rotary Pager</span>
+                <span id="pager-badge" style="font-size: 12px; color: var(--accent-cyan);">Page 1/6</span>
+            </div>
+            <div class="lcd-screen">
+                <div class="lcd-line" id="lcd-r0">OpenCAL 3D Printer  </div>
+                <div class="lcd-line" id="lcd-r1">Hardware: ONLINE    </div>
+                <div class="lcd-line" id="lcd-r2">IP: 10.49.26.109    </div>
+                <div class="lcd-line" id="lcd-r3">[Knob: Turn to Nav] </div>
+            </div>
+
+            <div class="btn-group" style="margin-bottom: 12px;">
+                <button onclick="prevDocPage()">◀️ Prev Doc Page</button>
+                <button onclick="nextDocPage()">▶️ Next Doc Page</button>
+                <button class="primary" onclick="executeKnobAction()">🔘 Press Knob Action</button>
+            </div>
+
+            <div class="form-group">
+                <label>Custom Text to Row 0:</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="lcd-custom-text" placeholder="Type custom message..." maxlength="20">
+                    <button class="primary" onclick="sendCustomLCD()">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. STEPPER MOTOR (VAM ROTATION) -->
         <div class="card">
-            <div class="card-title">📺 Newhaven 20x4 LCD Screen</div>
-            <div class="lcd-screen" id="lcd-preview">
-                <div class="lcd-line" id="line-0">                    </div>
-                <div class="lcd-line" id="line-1">                    </div>
-                <div class="lcd-line" id="line-2">                    </div>
-                <div class="lcd-line" id="line-3">                    </div>
+            <div class="card-title">
+                <span>⚙️ VAM Stepper Motor (Pololu Tic T249)</span>
+                <span style="font-size: 12px; color: var(--accent-amber);" id="motor-status">Driver OK</span>
             </div>
-            <div class="form-group">
-                <label>Row 0 Text</label>
-                <input type="text" id="input-0" maxlength="20" placeholder="Row 0 message...">
+            
+            <div class="telemetry-row">
+                <span class="telemetry-label">Current Position:</span>
+                <span class="telemetry-val" id="motor-pos">0 steps</span>
             </div>
-            <div class="form-group">
-                <label>Row 1 Text</label>
-                <input type="text" id="input-1" maxlength="20" placeholder="Row 1 message...">
+            <div class="telemetry-row">
+                <span class="telemetry-label">Driver Error Status:</span>
+                <span class="telemetry-val" id="driver-err" style="color: var(--accent-green);">0x0000 (Clear)</span>
             </div>
-            <div class="form-group">
-                <label>Row 2 Text</label>
-                <input type="text" id="input-2" maxlength="20" placeholder="Row 2 message...">
+
+            <div class="slider-container" style="margin: 14px 0;">
+                <label style="margin: 0;">Velocity:</label>
+                <input type="range" id="speed-slider" min="1" max="20" step="0.5" value="9" oninput="document.getElementById('speed-val').innerText = this.value + ' RPM'">
+                <span class="slider-val" id="speed-val">9.0 RPM</span>
             </div>
-            <div class="form-group">
-                <label>Row 3 Text</label>
-                <input type="text" id="input-3" maxlength="20" placeholder="Row 3 message...">
-            </div>
-            <div class="form-group" style="margin-top: 14px;">
-                <label>Contrast (1-50): <span id="contrast-val">42</span></label>
-                <div class="range-wrap">
-                    <input type="range" id="contrast-slider" min="1" max="50" value="42" oninput="document.getElementById('contrast-val').innerText=this.value" onchange="setLcdContrast(this.value)">
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Backlight Brightness (1-8): <span id="backlight-val">8</span></label>
-                <div class="range-wrap">
-                    <input type="range" id="backlight-slider" min="1" max="8" value="8" oninput="document.getElementById('backlight-val').innerText=this.value" onchange="setLcdBacklight(this.value)">
-                </div>
-            </div>
+
             <div class="btn-group">
-                <button class="success" onclick="sendLcdLines()">Send to LCD</button>
-                <button class="danger" onclick="clearLcd()">Clear Screen</button>
+                <button onclick="jogMotor(-3200)">⏪ -1 Rev (3200 steps)</button>
+                <button onclick="jogMotor(3200)">⏩ +1 Rev (3200 steps)</button>
+                <button class="success" onclick="startContinuousMotor()">🔄 Continuous Spin</button>
+                <button class="danger" onclick="stopMotor()">🛑 Emergency Stop</button>
             </div>
         </div>
 
-        <!-- 2. Stepper Motor Engine -->
+        <!-- 4. 64-LED RING ILLUMINATION -->
         <div class="card">
-            <div class="card-title">⚙️ Stepper Motor Engine</div>
-            <div class="stat-grid">
-                <div class="stat-box">
-                    <div class="stat-label">Current Position</div>
-                    <div class="stat-value" id="motor-pos">0</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-label">Speed (RPM)</div>
-                    <div class="stat-value" id="motor-rpm-disp">9.0</div>
-                </div>
+            <div class="card-title">
+                <span>💡 64-LED Ring Illumination</span>
+                <span style="font-size: 12px; color: var(--accent-cyan);">Pi5Neo GRB</span>
             </div>
-            <div class="form-group">
-                <label>Target Speed (RPM): <span id="rpm-val">9</span> RPM</label>
-                <div class="range-wrap">
-                    <input type="range" id="rpm-slider" min="1" max="30" value="9" oninput="updateRpmLabel(this.value)">
-                    <button onclick="setRpm()">Set Speed</button>
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Jog Microsteps</label>
-                <div class="btn-group">
-                    <button onclick="jogSteps(-1000)">-1000</button>
-                    <button onclick="jogSteps(-200)">-200</button>
-                    <button onclick="jogSteps(200)">+200</button>
-                    <button onclick="jogSteps(1000)">+1000</button>
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Continuous Spin</label>
-                <div class="btn-group">
-                    <button class="success" onclick="startSpin('CW')">Spin CW</button>
-                    <button class="success" onclick="startSpin('CCW')">Spin CCW</button>
-                    <button class="danger" onclick="stopSpin()">Stop Motor</button>
-                </div>
-            </div>
-        </div>
 
-        <!-- 3. NeoPixel LED Ring -->
-        <div class="card">
-            <div class="card-title">💡 Pi5Neo 64-LED Ring</div>
-            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 12px;">Select color preset or run dynamic animations:</p>
-            <div class="color-palette">
-                <div class="color-btn" style="background: #ff0000;" onclick="setLedPreset('red')" title="Red"></div>
-                <div class="color-btn" style="background: #00ff00;" onclick="setLedPreset('green')" title="Green"></div>
-                <div class="color-btn" style="background: #0088ff;" onclick="setLedPreset('blue')" title="Blue"></div>
-                <div class="color-btn" style="background: #ffcc00;" onclick="setLedPreset('yellow')" title="Yellow"></div>
-                <div class="color-btn" style="background: #ffffff;" onclick="setLedPreset('white')" title="White"></div>
-                <div class="color-btn" style="background: #222222;" onclick="setLedPreset('off')" title="Off"></div>
+            <div class="slider-container" style="margin-bottom: 14px;">
+                <label style="margin: 0;">Brightness:</label>
+                <input type="range" id="led-bright-slider" min="5" max="100" value="80" oninput="setBrightness(this.value)">
+                <span class="slider-val" id="led-bright-val">80%</span>
             </div>
+
+            <label>Quick Colors & Patterns:</label>
             <div class="btn-group">
-                <button class="success" onclick="runLedAnimation()">Run Startup Animation</button>
-                <button class="danger" onclick="setLedPreset('off')">Turn Off LEDs</button>
+                <button style="background: rgba(255,255,255,0.2); border-color: #fff;" onclick="setLedColor('white')">⚪ White</button>
+                <button style="background: rgba(0,240,255,0.2); border-color: #00f0ff;" onclick="setLedColor('cyan')">🌐 Cyan</button>
+                <button style="background: rgba(59,130,246,0.2); border-color: #3b82f6;" onclick="setLedColor('blue')">🔵 Blue</button>
+                <button style="background: rgba(16,185,129,0.2); border-color: #10b981;" onclick="setLedColor('green')">🟢 Green</button>
+                <button style="background: rgba(244,63,94,0.2); border-color: #f43f5e;" onclick="setLedColor('red')">🔴 Red</button>
+                <button style="background: rgba(245,158,11,0.2); border-color: #f59e0b;" onclick="setLedColor('yellow')">🟡 Yellow</button>
+            </div>
+            <div class="btn-group" style="margin-top: 8px;">
+                <button class="primary" onclick="runLedAnimation('rainbow')">🌈 Rainbow Cycle</button>
+                <button onclick="runLedAnimation('pulse')">✨ Pulse Effect</button>
+                <button class="danger" onclick="setLedColor('off')">🌑 Turn Off</button>
             </div>
         </div>
 
-        <!-- 4. Rotary Knob & Encoder -->
+        <!-- 5. ROTARY KNOB & SYSTEM TELEMETRY -->
         <div class="card">
-            <div class="card-title">🎛️ Rotary Encoder & Knob</div>
-            <div class="stat-grid">
-                <div class="stat-box">
-                    <div class="stat-label">Knob Steps</div>
-                    <div class="stat-value" id="knob-steps">0</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-label">Button State</div>
-                    <div class="stat-value" id="btn-state" style="color: var(--text-muted);">RELEASED</div>
-                </div>
+            <div class="card-title">
+                <span>🎛️ Rotary Encoder & System Telemetry</span>
             </div>
-            <p style="color: var(--text-muted); font-size: 13px;">Turn the physical knob or press the button on the machine to see live updates!</p>
-        </div>
-
-        <!-- 5. Camera Module 3 Preview -->
-        <div class="card" style="grid-column: 1 / -1;">
-            <div class="card-title" style="display: flex; justify-content: space-between;">
-                <span>📷 Camera Module 3 (Sony IMX708)</span>
-                <span id="cam-badge" style="font-size: 13px; color: var(--accent-cyan);">Status: Ready</span>
+            
+            <div class="telemetry-row">
+                <span class="telemetry-label">Encoder Step Count:</span>
+                <span class="telemetry-val" id="rotary-steps">0</span>
             </div>
-            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
-                <div style="flex: 2; min-width: 320px;">
-                    <img id="camera-frame" src="/api/camera/snapshot" style="width: 100%; border-radius: 10px; border: 1px solid var(--border-card); background: #050811; max-height: 420px; object-fit: contain; display: block;" onerror="this.src='/api/camera/placeholder'">
-                </div>
-                <div style="flex: 1; min-width: 260px; display: flex; flex-direction: column; justify-content: space-between;">
-                    <div>
-                        <div class="form-group">
-                            <label>Manual Lens Focus: <span id="focus-val">9.5</span> Diopters</label>
-                            <div class="range-wrap">
-                                <input type="range" id="focus-slider" min="0" max="15" step="0.5" value="9.5" oninput="document.getElementById('focus-val').innerText=this.value" onchange="setCameraFocus(this.value)">
-                            </div>
-                        </div>
-                        <div class="form-group" style="margin-top: 12px;">
-                            <label>Live Stream Auto-Refresh</label>
-                            <button id="stream-toggle-btn" class="success" onclick="toggleCameraStream()">Start Live Stream (2 FPS)</button>
-                        </div>
-                    </div>
-                    <div class="btn-group">
-                        <button class="success" onclick="captureSnapshot()">📸 Take Snapshot</button>
-                        <button onclick="triggerAutofocus()">🎯 Autofocus</button>
-                    </div>
-                </div>
+            <div class="telemetry-row">
+                <span class="telemetry-label">Knob Push Button:</span>
+                <span class="telemetry-val" id="rotary-btn">RELEASED</span>
+            </div>
+            <div class="telemetry-row">
+                <span class="telemetry-label">Active Documentation Page:</span>
+                <span class="telemetry-val" id="active-doc-title">SYSTEM DASHBOARD</span>
+            </div>
+            <div class="telemetry-row">
+                <span class="telemetry-label">Current Page Action:</span>
+                <span class="telemetry-val" id="active-doc-action" style="color: var(--accent-amber);">Refreshed Status</span>
             </div>
         </div>
     </div>
 
+    <div id="toast">Command Executed</div>
+
     <script>
-        function updateRpmLabel(val) {
-            document.getElementById('rpm-val').innerText = val;
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2500);
         }
 
-        async function sendLcdLines() {
-            const lines = [
-                document.getElementById('input-0').value,
-                document.getElementById('input-1').value,
-                document.getElementById('input-2').value,
-                document.getElementById('input-3').value,
-            ];
-            await fetch('/api/lcd/write', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({lines})
-            });
-            for(let i=0; i<4; i++) {
-                document.getElementById('line-' + i).innerText = (lines[i] || '').padEnd(20, ' ');
+        async function postAPI(url, data={}) {
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                const json = await res.json();
+                if (json.message) showToast(json.message);
+                return json;
+            } catch (e) {
+                showToast('Error: ' + e);
             }
         }
 
-        async function setLcdContrast(val) {
-            await fetch('/api/lcd/contrast', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({contrast: parseInt(val)})
-            });
+        // Camera functions
+        function setFocus(val) {
+            document.getElementById('focus-val').innerText = val + ' D';
+            postAPI('/api/camera/focus', {diopters: parseFloat(val)});
         }
-
-        async function setLcdBacklight(val) {
-            await fetch('/api/lcd/backlight', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({backlight: parseInt(val)})
-            });
-        }
-
-        async function jogSteps(steps) {
-            await fetch('/api/stepper/jog', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({steps})
-            });
-        }
-
-        async function setRpm() {
-            const rpm = parseFloat(document.getElementById('rpm-slider').value);
-            await fetch('/api/stepper/rpm', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({rpm})
-            });
-            document.getElementById('motor-rpm-disp').innerText = rpm.toFixed(1);
-        }
-
-        async function startSpin(direction) {
-            const rpm = parseFloat(document.getElementById('rpm-slider').value);
-            await fetch('/api/stepper/spin', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({direction, rpm})
-            });
-        }
-
-        async function stopSpin() {
-            await fetch('/api/stepper/stop', {method: 'POST'});
-        }
-
-        async function setLedPreset(preset) {
-            await fetch('/api/led/preset', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({preset})
-            });
-        }
-
-        async function runLedAnimation() {
-            await fetch('/api/led/animation', {method: 'POST'});
-        }
-
-        async function setCameraFocus(val) {
-            await fetch('/api/camera/focus', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({focus: parseFloat(val)})
-            });
-        }
-
-        async function triggerAutofocus() {
-            await fetch('/api/camera/autofocus', {method: 'POST'});
-        }
-
-        function captureSnapshot() {
-            document.getElementById('camera-frame').src = '/api/camera/snapshot?t=' + Date.now();
-        }
-
-        let streamInterval = null;
-        function toggleCameraStream() {
-            const btn = document.getElementById('stream-toggle-btn');
-            if (streamInterval) {
-                clearInterval(streamInterval);
-                streamInterval = null;
-                btn.innerText = 'Start Live Stream (2 FPS)';
-                btn.className = 'success';
+        function triggerAutofocus() { postAPI('/api/camera/autofocus'); }
+        function takeSnapshot() { window.open('/api/camera/snapshot?t=' + Date.now(), '_blank'); }
+        function toggleStream() {
+            const img = document.getElementById('cam-stream');
+            if (img.src.includes('stream')) {
+                img.src = '/api/camera/placeholder';
+                showToast('Stream Paused');
             } else {
-                streamInterval = setInterval(() => {
-                    document.getElementById('camera-frame').src = '/api/camera/snapshot?t=' + Date.now();
-                }, 500);
-                btn.innerText = 'Stop Live Stream';
-                btn.className = 'danger';
+                img.src = '/api/camera/stream?t=' + Date.now();
+                showToast('Live Stream Resumed');
             }
         }
 
-        // Live Telemetry Poller
+        // LCD & Pager functions
+        function prevDocPage() { postAPI('/api/pager/prev'); }
+        function nextDocPage() { postAPI('/api/pager/next'); }
+        function executeKnobAction() { postAPI('/api/pager/action'); }
+        function sendCustomLCD() {
+            const text = document.getElementById('lcd-custom-text').value;
+            if (text) postAPI('/api/lcd/write', {row: 0, text: text});
+        }
+
+        // Stepper Motor
+        function jogMotor(steps) { postAPI('/api/stepper/jog', {steps: steps}); }
+        function startContinuousMotor() {
+            const rpm = parseFloat(document.getElementById('speed-slider').value);
+            postAPI('/api/stepper/spin', {rpm: rpm});
+        }
+        function stopMotor() { postAPI('/api/stepper/stop'); }
+
+        // LED
+        function setLedColor(c) { postAPI('/api/led/color', {color: c}); }
+        function setBrightness(b) {
+            document.getElementById('led-bright-val').innerText = b + '%';
+            postAPI('/api/led/brightness', {brightness: parseInt(b)});
+        }
+        function runLedAnimation(anim) { postAPI('/api/led/animate', {animation: anim}); }
+
+        // Poller for Real-time telemetry
         setInterval(async () => {
             try {
                 const res = await fetch('/api/telemetry');
                 if (res.ok) {
                     const data = await res.json();
+                    if (data.lcd) {
+                        document.getElementById('lcd-r0').innerText = data.lcd[0] || '';
+                        document.getElementById('lcd-r1').innerText = data.lcd[1] || '';
+                        document.getElementById('lcd-r2').innerText = data.lcd[2] || '';
+                        document.getElementById('lcd-r3').innerText = data.lcd[3] || '';
+                    }
+                    if (data.pager) {
+                        document.getElementById('pager-badge').innerText = `Page ${data.pager.index + 1}/${data.pager.total}`;
+                        document.getElementById('active-doc-title').innerText = data.pager.title;
+                        document.getElementById('active-doc-action').innerText = data.pager.action_desc;
+                    }
                     if (data.rotary) {
-                        document.getElementById('knob-steps').innerText = data.rotary.steps;
-                        const btnEl = document.getElementById('btn-state');
-                        if (data.rotary.button) {
-                            btnEl.innerText = 'PRESSED';
-                            btnEl.style.color = 'var(--accent-green)';
-                        } else {
-                            btnEl.innerText = 'RELEASED';
-                            btnEl.style.color = 'var(--text-muted)';
-                        }
+                        document.getElementById('rotary-steps').innerText = data.rotary.steps;
+                        document.getElementById('rotary-btn').innerText = data.rotary.button ? 'PRESSED' : 'RELEASED';
+                        document.getElementById('rotary-btn').style.color = data.rotary.button ? 'var(--accent-green)' : 'var(--accent-cyan)';
                     }
                     if (data.stepper) {
-                        document.getElementById('motor-pos').innerText = data.stepper.position;
-                    }
-                    if (data.camera) {
-                        document.getElementById('cam-badge').innerText = 'Status: ' + (data.camera.connected ? 'Active (' + data.camera.model + ')' : 'Connecting...');
+                        document.getElementById('motor-pos').innerText = data.stepper.position + ' steps';
                     }
                 }
             } catch (e) {}
-        }, 400);
+        }, 300);
     </script>
 </body>
 </html>
@@ -412,9 +435,10 @@ HTML_DASHBOARD = """<!DOCTYPE html>
 
 class WebConsoleHandler(BaseHTTPRequestHandler):
     hardware: HardwareController = None
+    current_doc_page = 0
 
     def log_message(self, format, *args):
-        pass  # Suppress default noisy access logs
+        pass  # Suppress default noisy logs
 
     def _send_json(self, data: dict, status: int = 200):
         self.send_response(status)
@@ -425,7 +449,7 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/" or parsed.path == "/index.html":
+        if parsed.path in ("/", "/index.html"):
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
@@ -443,26 +467,55 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                     pass
 
             pos = 0
-            if self.hardware and self.hardware.stepper:
+            if self.hardware and self.hardware.stepper and hasattr(self.hardware.stepper, "tic") and self.hardware.stepper.tic:
                 try:
-                    if hasattr(self.hardware.stepper, "tic") and self.hardware.stepper.tic:
-                        pos = self.hardware.stepper.tic.get_current_position()
+                    pos = self.hardware.stepper.tic.get_current_position()
                 except Exception:
                     pass
 
-            cam_ok = False
-            if self.hardware and self.hardware.camera and hasattr(self.hardware.camera, "picam") and self.hardware.camera.picam:
-                cam_ok = True
+            page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
+            lcd_lines = getattr(self.hardware.lcd, "framebuffer", page["lines"]) if self.hardware and self.hardware.lcd else page["lines"]
 
             self._send_json({
                 "rotary": {"steps": steps, "button": btn_active},
                 "stepper": {"position": pos},
-                "camera": {"connected": cam_ok, "model": "Sony IMX708 Module 3"}
+                "pager": {
+                    "index": WebConsoleHandler.current_doc_page,
+                    "total": len(OPENCAL_PAGES),
+                    "title": page["title"],
+                    "action_desc": page["action_desc"]
+                },
+                "lcd": lcd_lines
             })
             return
 
+        if parsed.path == "/api/camera/stream":
+            # Real-time 30 FPS MJPEG Stream
+            self.send_response(200)
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Cache-Control", "no-cache, private")
+            self.send_header("Pragma", "no-cache")
+            self.end_headers()
+
+            try:
+                while True:
+                    frame = None
+                    if self.hardware and self.hardware.camera:
+                        frame = self.hardware.camera.get_jpeg_frame()
+                    if frame:
+                        self.wfile.write(b"--frame\r\n")
+                        self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                        self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode("utf-8"))
+                        self.wfile.write(frame)
+                        self.wfile.write(b"\r\n")
+                        time.sleep(0.033)  # ~30 FPS
+                    else:
+                        time.sleep(0.1)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+
         if parsed.path == "/api/camera/snapshot":
-            # Attempt to capture frame via rpicam-still or CameraController
             img_path = Path("/tmp/web_capture.jpeg")
             captured = False
             if self.hardware and self.hardware.camera:
@@ -470,42 +523,17 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                     captured = self.hardware.camera.capture_image(img_path)
                 except Exception:
                     pass
-
-            if not captured:
-                # Fallback to rpicam-still fast grab
-                try:
-                    import subprocess
-                    subprocess.run(
-                        ["rpicam-still", "-t", "200", "-o", "/tmp/web_capture.jpeg", "--nopreview", "-n", "--width", "800", "--height", "600"],
-                        capture_output=True, timeout=2
-                    )
-                    captured = img_path.exists()
-                except Exception:
-                    pass
-
             if captured and img_path.exists():
-                try:
-                    with open(img_path, "rb") as f:
-                        img_data = f.read()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "image/jpeg")
-                    self.send_header("Cache-Control", "no-cache")
-                    self.end_headers()
-                    self.wfile.write(img_data)
-                    return
-                except Exception:
-                    pass
-
-            # If no frame available, serve SVG placeholder
-            svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><rect width="100%" height="100%" fill="#0a0f1d"/><text x="50%" y="45%" fill="#00f0ff" font-family="sans-serif" font-size="20" text-anchor="middle" font-weight="bold">Camera Module 3 (Sony IMX708)</text><text x="50%" y="60%" fill="#94a3b8" font-family="sans-serif" font-size="14" text-anchor="middle">Check ribbon cable seating in CAM0/CAM1 slot</text></svg>'
-            self.send_response(200)
-            self.send_header("Content-Type", "image/svg+xml")
-            self.end_headers()
-            self.wfile.write(svg.encode("utf-8"))
-            return
+                with open(img_path, "rb") as f:
+                    img_data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.end_headers()
+                self.wfile.write(img_data)
+                return
 
         if parsed.path == "/api/camera/placeholder":
-            svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><rect width="100%" height="100%" fill="#0a0f1d"/><text x="50%" y="50%" fill="#94a3b8" font-family="sans-serif" font-size="16" text-anchor="middle">Awaiting Camera Feed...</text></svg>'
+            svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><rect width="100%" height="100%" fill="#0a0f1d"/><text x="50%" y="50%" fill="#94a3b8" font-family="sans-serif" font-size="16" text-anchor="middle">Stream Paused</text></svg>'
             self.send_response(200)
             self.send_header("Content-Type", "image/svg+xml")
             self.end_headers()
@@ -518,149 +546,220 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         content_len = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_len) if content_len > 0 else b"{}"
-        data = json.loads(body.decode("utf-8")) if body else {}
+        try:
+            data = json.loads(body.decode("utf-8"))
+        except Exception:
+            data = {}
 
-        # 1. LCD Endpoints
+        # 1. PAGER & ROTARY ACTIONS
+        if parsed.path == "/api/pager/next":
+            WebConsoleHandler.current_doc_page = (WebConsoleHandler.current_doc_page + 1) % len(OPENCAL_PAGES)
+            self._render_current_page()
+            self._send_json({"message": f"Switched to {OPENCAL_PAGES[WebConsoleHandler.current_doc_page]['title']}"})
+            return
+
+        if parsed.path == "/api/pager/prev":
+            WebConsoleHandler.current_doc_page = (WebConsoleHandler.current_doc_page - 1) % len(OPENCAL_PAGES)
+            self._render_current_page()
+            self._send_json({"message": f"Switched to {OPENCAL_PAGES[WebConsoleHandler.current_doc_page]['title']}"})
+            return
+
+        if parsed.path == "/api/pager/action":
+            msg = self._trigger_page_action()
+            self._send_json({"message": msg})
+            return
+
+        # 2. LCD DIRECT WRITE
         if parsed.path == "/api/lcd/write":
-            lines = data.get("lines", [])
+            row = data.get("row", 0)
+            text = data.get("text", "")
             if self.hardware and self.hardware.lcd:
-                for i, text in enumerate(lines[:4]):
-                    self.hardware.lcd.write_message(text, row=i)
-            self._send_json({"status": "ok"})
+                self.hardware.lcd.write_message(text, row=row)
+            self._send_json({"message": f"Updated LCD row {row}"})
             return
 
-        if parsed.path == "/api/lcd/clear":
-            if self.hardware and self.hardware.lcd:
-                self.hardware.lcd.clear()
-            self._send_json({"status": "ok"})
+        # 3. CAMERA CONTROLS
+        if parsed.path == "/api/camera/focus":
+            diopters = float(data.get("diopters", 9.5))
+            if self.hardware and self.hardware.camera:
+                self.hardware.camera.set_focus(diopters)
+            self._send_json({"message": f"Focus set to {diopters} D"})
             return
 
-        if parsed.path == "/api/lcd/contrast":
-            val = int(data.get("contrast", 42))
-            if self.hardware and self.hardware.lcd and hasattr(self.hardware.lcd.backend, "set_contrast"):
-                self.hardware.lcd.backend.set_contrast(val)
-            self._send_json({"status": "ok"})
+        if parsed.path == "/api/camera/autofocus":
+            if self.hardware and self.hardware.camera:
+                self.hardware.camera.activate_autofocus()
+            self._send_json({"message": "Continuous Autofocus Activated"})
             return
 
-        if parsed.path == "/api/lcd/backlight":
-            val = int(data.get("backlight", 8))
-            if self.hardware and self.hardware.lcd and hasattr(self.hardware.lcd.backend, "set_backlight"):
-                self.hardware.lcd.backend.set_backlight(val)
-            self._send_json({"status": "ok"})
-            return
-
-        # 2. Stepper Endpoints
+        # 4. STEPPER MOTOR CONTROLS
         if parsed.path == "/api/stepper/jog":
-            steps = int(data.get("steps", 0))
+            steps = int(data.get("steps", 3200))
             if self.hardware and self.hardware.stepper:
-                try:
-                    self.hardware.stepper.rotate_steps(steps)
-                except Exception as e:
-                    self._send_json({"error": str(e)}, status=500)
-                    return
-            self._send_json({"status": "ok"})
-            return
-
-        if parsed.path == "/api/stepper/rpm":
-            rpm = float(data.get("rpm", 9.0))
-            if self.hardware and self.hardware.stepper:
-                try:
-                    self.hardware.stepper.set_rpm(rpm)
-                except Exception as e:
-                    self._send_json({"error": str(e)}, status=500)
-                    return
-            self._send_json({"status": "ok"})
+                self.hardware.stepper.jog(steps)
+            self._send_json({"message": f"Jogged {steps} microsteps"})
             return
 
         if parsed.path == "/api/stepper/spin":
-            direction = str(data.get("direction", "CW"))
             rpm = float(data.get("rpm", 9.0))
             if self.hardware and self.hardware.stepper:
-                try:
-                    self.hardware.stepper.set_rpm(rpm)
-                    self.hardware.stepper.start_rotation(direction)
-                except Exception as e:
-                    self._send_json({"error": str(e)}, status=500)
-                    return
-            self._send_json({"status": "ok"})
+                self.hardware.stepper.set_speed(rpm)
+                self.hardware.stepper.start_continuous()
+            self._send_json({"message": f"Continuous rotation at {rpm} RPM"})
             return
 
         if parsed.path == "/api/stepper/stop":
             if self.hardware and self.hardware.stepper:
-                try:
-                    self.hardware.stepper.stop()
-                except Exception as e:
-                    self._send_json({"error": str(e)}, status=500)
-                    return
-            self._send_json({"status": "ok"})
+                self.hardware.stepper.stop()
+            self._send_json({"message": "Motor stopped"})
             return
 
-        # 3. LED Endpoints
-        if parsed.path == "/api/led/preset":
-            preset = str(data.get("preset", "off")).lower()
-            color_map = {
-                "red": RED,
-                "green": GREEN,
-                "blue": BLUE,
-                "yellow": YELLOW,
-                "white": WHITE,
-                "off": OFF,
-            }
-            color = color_map.get(preset, OFF)
-            if self.hardware and self.hardware.led_manager:
-                try:
-                    self.hardware.led_manager.set_led(color)
-                except Exception as e:
-                    self._send_json({"error": str(e)}, status=500)
-                    return
-            self._send_json({"status": "ok"})
+        # 5. LED CONTROLS
+        if parsed.path == "/api/led/color":
+            col_str = data.get("color", "white").lower()
+            cmap = {"red": RED, "green": GREEN, "blue": BLUE, "yellow": YELLOW, "white": WHITE, "cyan": (0, 255, 255), "off": OFF}
+            color = cmap.get(col_str, WHITE)
+            if self.hardware and self.hardware.leds:
+                self.hardware.leds.set_color(color)
+            self._send_json({"message": f"LEDs set to {col_str.upper()}"})
             return
 
-        if parsed.path == "/api/led/animation":
-            if self.hardware and self.hardware.led_manager:
-                threading.Thread(target=self.hardware.led_manager.run_start_animation, daemon=True).start()
-            self._send_json({"status": "ok"})
+        if parsed.path == "/api/led/brightness":
+            b = int(data.get("brightness", 80))
+            if self.hardware and self.hardware.leds:
+                self.hardware.leds.set_brightness(b / 100.0)
+            self._send_json({"message": f"LED brightness set to {b}%"})
             return
 
-        # 4. Camera Endpoints
-        if parsed.path == "/api/camera/focus":
-            focus_val = float(data.get("focus", 9.5))
-            if self.hardware and self.hardware.camera and hasattr(self.hardware.camera, "set_focus"):
-                self.hardware.camera.set_focus(focus_val)
-            self._send_json({"status": "ok"})
+        if parsed.path == "/api/led/animate":
+            anim = data.get("animation", "rainbow")
+            if self.hardware and self.hardware.leds:
+                threading.Thread(target=self._run_led_anim, args=(anim,), daemon=True).start()
+            self._send_json({"message": f"Running {anim} animation"})
             return
 
-        if parsed.path == "/api/camera/autofocus":
-            if self.hardware and self.hardware.camera and hasattr(self.hardware.camera, "activate_autofocus"):
+        self._send_json({"error": "Endpoint not found"}, status=404)
+
+    def _render_current_page(self):
+        page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
+        if self.hardware and self.hardware.lcd:
+            for idx, line in enumerate(page["lines"]):
+                self.hardware.lcd.write_message(line, row=idx)
+
+    def _trigger_page_action(self) -> str:
+        page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
+        action = page["action"]
+        if action == "jog_motor_360":
+            if self.hardware and self.hardware.stepper:
+                self.hardware.stepper.jog(3200)
+            return "Motor Jogged 360 Degrees"
+        elif action == "run_rainbow":
+            if self.hardware and self.hardware.leds:
+                threading.Thread(target=self._run_led_anim, args=("rainbow",), daemon=True).start()
+            return "LED Rainbow Started"
+        elif action == "trigger_autofocus":
+            if self.hardware and self.hardware.camera:
                 self.hardware.camera.activate_autofocus()
-            self._send_json({"status": "ok"})
+            return "Autofocus Triggered"
+        elif action == "start_print_demo":
+            if self.hardware and self.hardware.stepper:
+                self.hardware.stepper.set_speed(9.0)
+                self.hardware.stepper.start_continuous()
+            return "VAM Print Demo Started (9 RPM)"
+        else:
+            self._render_current_page()
+            return f"Page {page['title']} Refreshed"
+
+    def _run_led_anim(self, anim_name):
+        if not self.hardware or not self.hardware.leds:
             return
+        if anim_name == "rainbow":
+            for _ in range(3):
+                for color in [(255,0,0), (255,127,0), (255,255,0), (0,255,0), (0,255,255), (0,0,255), (139,0,255)]:
+                    self.hardware.leds.set_color(color)
+                    time.sleep(0.12)
+            self.hardware.leds.set_color(WHITE)
 
-        self._send_json({"error": "Invalid endpoint"}, status=404)
 
-
-def launch_web_console(port: int = 5000):
-    print("=" * 60)
-    print("       OPENCAL HARDWARE TESTING & CONTROL CONSOLE       ")
-    print("=" * 60)
-    print("Initializing hardware controller...")
-    cfg = Config()
-    hw = HardwareController(cfg)
-    WebConsoleHandler.hardware = hw
-
-    server_address = ("0.0.0.0", port)
-    httpd = ThreadingHTTPServer(server_address, WebConsoleHandler)
-    print(f"\n[READY] Web Console is live at:")
-    print(f"  -> Local Network: http://softa-vam.local:{port}")
-    print(f"  -> Direct IP:     http://0.0.0.0:{port}\n")
-    print("Press Ctrl+C in terminal to stop.")
+def rotary_hardware_listener(hardware: HardwareController):
+    """Background listener tracking physical rotary knob rotation and button clicks."""
+    if not hardware or not hardware.rotary:
+        return
+    last_step = hardware.rotary.get_steps()
     
+    # Initialize LCD with Page 0
+    page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
+    if hardware.lcd:
+        for idx, line in enumerate(page["lines"]):
+            hardware.lcd.write_message(line, row=idx)
+
+    while True:
+        try:
+            current_step = hardware.rotary.get_steps()
+            diff = current_step - last_step
+            if diff >= 2:  # Clockwise rotation
+                WebConsoleHandler.current_doc_page = (WebConsoleHandler.current_doc_page + 1) % len(OPENCAL_PAGES)
+                page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
+                if hardware.lcd:
+                    for idx, line in enumerate(page["lines"]):
+                        hardware.lcd.write_message(line, row=idx)
+                last_step = current_step
+            elif diff <= -2:  # Counter-clockwise rotation
+                WebConsoleHandler.current_doc_page = (WebConsoleHandler.current_doc_page - 1) % len(OPENCAL_PAGES)
+                page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
+                if hardware.lcd:
+                    for idx, line in enumerate(page["lines"]):
+                        hardware.lcd.write_message(line, row=idx)
+                last_step = current_step
+
+            # Button Click Check
+            if hardware.rotary.was_button_pressed():
+                page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
+                if hardware.lcd:
+                    hardware.lcd.write_message(">>> ACTION RUN <<<  ", row=3)
+                # Execute action
+                action = page["action"]
+                if action == "jog_motor_360" and hardware.stepper:
+                    hardware.stepper.jog(3200)
+                elif action == "run_rainbow" and hardware.leds:
+                    for color in [(255,0,0), (0,255,0), (0,0,255), (255,255,255)]:
+                        hardware.leds.set_color(color)
+                        time.sleep(0.15)
+                elif action == "trigger_autofocus" and hardware.camera:
+                    hardware.camera.activate_autofocus()
+                elif action == "start_print_demo" and hardware.stepper:
+                    hardware.stepper.set_speed(9.0)
+                    hardware.stepper.start_continuous()
+                time.sleep(0.8)
+                if hardware.lcd:
+                    hardware.lcd.write_message(page["lines"][3], row=3)
+
+            time.sleep(0.05)
+        except Exception as e:
+            time.sleep(0.1)
+
+
+def run_web_console(host="0.0.0.0", port=5000):
+    print("=" * 60)
+    print("     STARTING OPENCAL HARDWARE WEB CONSOLE (PORT 5000)   ")
+    print("=" * 60)
+    
+    cfg = Config()
+    hardware = HardwareController(cfg)
+    WebConsoleHandler.hardware = hardware
+
+    # Start physical Rotary Encoder Background Pager Listener
+    threading.Thread(target=rotary_hardware_listener, args=(hardware,), daemon=True).start()
+
+    server = ThreadingHTTPServer((host, port), WebConsoleHandler)
+    print(f"🚀 Console Live: http://softa-vam.local:{port} or http://10.49.26.109:{port}")
     try:
-        httpd.serve_forever()
+        server.serve_forever()
     except KeyboardInterrupt:
         print("\nStopping Web Console...")
-        httpd.server_close()
+        server.shutdown()
+        hardware.close()
 
 
 if __name__ == "__main__":
-    launch_web_console(5000)
+    run_web_console()
