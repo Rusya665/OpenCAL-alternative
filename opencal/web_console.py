@@ -647,7 +647,7 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                     out = subprocess.check_output(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"], text=True)
                     for line in out.strip().splitlines():
                         parts = line.split(":")
-                        if len(parts) >= 2 and "wifi" in parts[1]:
+                        if len(parts) >= 2 and ("wifi" in parts[1].lower() or "wireless" in parts[1].lower()):
                             net_ssid = parts[0]
                             break
                 except Exception:
