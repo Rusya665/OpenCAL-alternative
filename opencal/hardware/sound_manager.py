@@ -14,10 +14,6 @@ SHUTDOWN_WAV = SOUNDS_DIR / "win_xp_shutdown.wav"
 SCROLL_WAV = SOUNDS_DIR / "doom_scroll.wav"
 CLICK_WAV = SOUNDS_DIR / "doom_click.wav"
 
-# Fallbacks if WAVs are not yet generated
-STARTUP_MP3 = SOUNDS_DIR / "win_xp_startup.mp3"
-SHUTDOWN_MP3 = SOUNDS_DIR / "win_xp_shutdown.mp3"
-
 AUDIO_ENV = os.environ.copy()
 AUDIO_ENV["XDG_RUNTIME_DIR"] = "/run/user/1000"
 AUDIO_ENV["PULSE_SERVER"] = "unix:/run/user/1000/pulse/native"
@@ -28,8 +24,8 @@ AUDIO_ENV["PIPEWIRE_RUNTIME_DIR"] = "/run/user/1000"
 class SoundManager:
     """Manages audio effects, startup/shutdown jingles, and Doom-style menu navigation sounds.
 
-    Directly routes uncompressed PCM to the HDMI projector output via ALSA plughw:0,0
-    and PipeWire pw-play with zero external dependencies.
+    Directly interfaces with the PipeWire audio engine via pw-play to ensure non-blocking,
+    multi-stream mixed playback through HDMI to the Optoma projector.
     """
 
     def __init__(self, sounds_enabled: bool = True) -> None:
@@ -39,13 +35,13 @@ class SoundManager:
         self._worker_thread.start()
 
     def _play_file(self, sound_file: Path, timeout: float = 5.0) -> None:
-        """Play audio file directly to HDMI output with fallback."""
+        """Play audio file directly through PipeWire with fallback."""
         if not sound_file.exists():
             return
-        # 1. Try ALSA direct hardware output (HDMI card 0)
+        # 1. Primary: PipeWire native player (mixes audio, no 'device busy' locks)
         try:
             res = subprocess.run(
-                ["aplay", "-D", "plughw:0,0", "-q", "-N", str(sound_file)],
+                ["pw-play", str(sound_file)],
                 env=AUDIO_ENV,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -56,10 +52,10 @@ class SoundManager:
         except Exception:
             pass
 
-        # 2. Fallback to PipeWire pw-play
+        # 2. Fallback: ALSA default device
         try:
             subprocess.run(
-                ["pw-play", str(sound_file)],
+                ["aplay", "-D", "default", "-q", "-N", str(sound_file)],
                 env=AUDIO_ENV,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -119,17 +115,15 @@ class SoundManager:
 
     def play_startup(self) -> None:
         """Play Windows XP startup sound asynchronously on boot."""
-        target = STARTUP_WAV if STARTUP_WAV.exists() else STARTUP_MP3
-        if not self.sounds_enabled or not target.exists():
+        if not self.sounds_enabled or not STARTUP_WAV.exists():
             return
         try:
-            self._queue.put_nowait(target)
+            self._queue.put_nowait(STARTUP_WAV)
         except queue.Full:
             pass
 
     def play_shutdown(self, blocking: bool = True) -> None:
         """Play Windows XP shutdown sound synchronously before shutdown/reboot."""
-        target = SHUTDOWN_WAV if SHUTDOWN_WAV.exists() else SHUTDOWN_MP3
-        if not self.sounds_enabled or not target.exists():
+        if not self.sounds_enabled or not SHUTDOWN_WAV.exists():
             return
-        self._play_file(target, timeout=4.2)
+        self._play_file(SHUTDOWN_WAV, timeout=4.2)
