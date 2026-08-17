@@ -262,12 +262,6 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <span class="slider-val" id="focus-val">9.5 D</span>
             </div>
 
-            <div class="slider-container" style="margin-top: 10px;">
-                <label style="min-width: 90px;">Beam Align Y:</label>
-                <input type="range" id="align-y-slider" min="-200" max="200" step="5" value="0" oninput="setAlignmentOffset(this.value)">
-                <span class="slider-val" id="align-y-val">0 px</span>
-            </div>
-
             <div class="btn-group">
                 <button class="primary" onclick="triggerAutofocus()">🎯 Auto-Focus</button>
                 <button onclick="toggleCrosshair()">📐 Crosshair Overlay</button>
@@ -444,17 +438,23 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             <div id="wifi-scan-results" style="margin-top: 10px; display: none; font-size: 12px;"></div>
         </div>
 
-        <!-- 7. EXPERIMENTAL PROJECTOR & AUDIO CONTROLS -->
+        <!-- 7. PROJECTOR HARDWARE & OPTICAL ALIGNMENT -->
         <div class="card">
             <div class="card-title">
-                <span>🎬 Experimental Projector & Audio Player</span>
-                <span style="font-size: 12px; color: var(--accent-purple);">HDMI Media</span>
+                <span>📽️ Projector & Optical Alignment</span>
+                <span style="font-size: 12px; color: var(--accent-purple);">HDMI Display</span>
             </div>
             
-            <div class="slider-group" style="margin-bottom: 16px;">
+            <div class="slider-group" style="margin-bottom: 12px;">
                 <label>Projector Speaker Volume:</label>
                 <input type="range" id="proj-vol-slider" min="0" max="100" value="20" oninput="setProjectorVolume(this.value)">
                 <span class="slider-val" id="proj-vol-val">20%</span>
+            </div>
+
+            <div class="slider-container" style="margin-bottom: 14px;">
+                <label style="min-width: 90px;">Beam Align Y:</label>
+                <input type="range" id="align-y-slider" min="-200" max="200" step="5" value="0" oninput="setAlignmentOffset(this.value)">
+                <span class="slider-val" id="align-y-val">0 px</span>
             </div>
 
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">PROJECTOR POWER & HARDWARE:</div>
