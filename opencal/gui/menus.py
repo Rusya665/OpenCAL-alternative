@@ -280,10 +280,24 @@ class AboutMenu(MenuBase):
             else:
                 lines.append(" " * 20)
 class NetworkInfoMenu(MenuBase):
-    """Displays active Wi-Fi SSID, local IP, and Web Console port on 20x4 LCD."""
+    """Displays active Wi-Fi SSID, local IP, and Web Console port on 20x4 LCD without blocking GUI loop."""
     def __init__(self):
         super().__init__()
         self.title = "Network Info"
+        self._cached_ssid = "Scanning..."
+        self._cached_ip = "192.168.4.1"
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def on_enter(self, gui: "LCDGui") -> None:
+        super().on_enter(gui)
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._refresh_loop, daemon=True)
+        self._thread.start()
+
+    def on_exit(self) -> None:
+        self._stop_event.set()
+        super().on_exit()
 
     def on_click(self) -> None:
         if self._gui:
@@ -292,36 +306,42 @@ class NetworkInfoMenu(MenuBase):
     def on_rotate(self, delta: int) -> None:
         pass
 
-    def render(self) -> list[str]:
+    def _refresh_loop(self) -> None:
         import subprocess
-        ssid = "Disconnected"
-        try:
-            out = subprocess.check_output(
-                ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"],
-                timeout=1.0,
-                text=True,
-            )
-            for line in out.strip().splitlines():
-                parts = line.split(":")
-                if len(parts) >= 2 and ("wifi" in parts[1].lower() or "wireless" in parts[1].lower()):
-                    ssid = parts[0]
-                    break
-        except Exception:
-            pass
+        while not self._stop_event.is_set():
+            ssid = "Disconnected"
+            try:
+                out = subprocess.check_output(
+                    ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"],
+                    timeout=2.0,
+                    text=True,
+                )
+                for line in out.strip().splitlines():
+                    parts = line.split(":")
+                    if len(parts) >= 2 and ("wifi" in parts[1].lower() or "wireless" in parts[1].lower()):
+                        ssid = parts[0]
+                        break
+            except Exception:
+                pass
 
-        local_ip = "192.168.4.1"
-        try:
-            out = subprocess.check_output(["hostname", "-I"], timeout=1.0, text=True)
-            ips = out.strip().split()
-            if ips:
-                local_ip = ips[0]
-        except Exception:
-            pass
+            local_ip = "No IP"
+            try:
+                out = subprocess.check_output(["hostname", "-I"], timeout=2.0, text=True)
+                ips = out.strip().split()
+                if ips:
+                    local_ip = ips[0]
+            except Exception:
+                pass
 
+            self._cached_ssid = ssid
+            self._cached_ip = local_ip
+            self._stop_event.wait(3.0)
+
+    def render(self) -> list[str]:
         return [
             "-- NETWORK INFO --".center(20),
-            f"SSID: {ssid[:14]}".ljust(20),
-            f"IP: {local_ip[:16]}".ljust(20),
+            f"SSID: {self._cached_ssid[:14]}".ljust(20),
+            f"IP: {self._cached_ip[:16]}".ljust(20),
             "Port: 5000 (Online) ".ljust(20),
         ]
 
