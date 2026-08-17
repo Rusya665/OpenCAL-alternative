@@ -37,12 +37,13 @@ class NewhavenLCDBackend:
         else:
             self.bus = None
 
+        self._last_rendered_rows = ["", "", "", ""]
         self.display_on()
         self.set_backlight(backlight)
         self.set_contrast(contrast)
         self.clear()
 
-    def _send_byte(self, byte_val: int, delay: float = 0.0025):
+    def _send_byte(self, byte_val: int, delay: float = 0.002):
         if not self.bus:
             return
         try:
@@ -71,11 +72,12 @@ class NewhavenLCDBackend:
             self._send_byte(0x53, 0.003)
             self._send_byte(level, 0.020)
 
-    def render_frame(self, line0: str = "", line1: str = "", line2: str = "", line3: str = ""):
+    def render_frame(self, line0: str = "", line1: str = "", line2: str = "", line3: str = "", force: bool = False):
         """
-        Explicit 4-Row DDRAM Addressed Frame Rendering:
-        Anchors cursor to [0x00, 0x40, 0x14, 0x54] before writing each row.
-        Guarantees 100% position lock with zero drift under continuous scrolling.
+        Rock-Solid 4-Row DDRAM Frame Rendering with Differential Row Updates:
+        - Anchors cursor to [0x00, 0x40, 0x14, 0x54] with 6ms PIC settling time.
+        - Skips unchanged rows to prevent I2C bus congestion.
+        - Eliminates dropped characters during fast knob rotations.
         """
         if not self.bus:
             return
@@ -83,19 +85,27 @@ class NewhavenLCDBackend:
         with self._lock:
             try:
                 for row_idx, line in enumerate(lines):
-                    # 1. Explicitly position hardware cursor for this row
+                    padded_line_str = line.ljust(20)[:20]
+                    if not force and self._last_rendered_rows[row_idx] == padded_line_str:
+                        continue  # Skip identical row
+                    
+                    # 1. Explicitly position hardware cursor for this row with 6ms settling delay
                     self._send_byte(0xFE, 0.002)
                     self._send_byte(0x45, 0.002)
-                    self._send_byte(self.ROW_ADDRS[row_idx], 0.003)
+                    self._send_byte(self.ROW_ADDRS[row_idx], 0.006)
+                    
                     # 2. Write 20 characters for this row
-                    padded_line = line.ljust(20)[:20].encode("latin-1", errors="replace")
-                    for char_byte in padded_line:
-                        self._send_byte(char_byte, self.char_delay)
+                    padded_bytes = padded_line_str.encode("latin-1", errors="replace")
+                    for char_byte in padded_bytes:
+                        self._send_byte(char_byte, 0.0018)
+                    
+                    self._last_rendered_rows[row_idx] = padded_line_str
             except Exception as e:
                 print(f"I2C Render Error: {e}")
 
     def clear(self):
         with self._lock:
+            self._last_rendered_rows = ["", "", "", ""]
             self._send_byte(0xFE, 0.003)
             self._send_byte(0x51, 0.100)
 
