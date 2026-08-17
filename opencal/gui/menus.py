@@ -358,6 +358,59 @@ class NetworkInfoMenu(MenuBase):
             f"TS: {ts_display[:16]}".ljust(20),
         ]
 
+def _switch_wifi_async(con_name: str, gui: "LCDGui") -> None:
+    gui.splash(f"Connecting...\n{con_name[:14]}", delay_seconds=2.0)
+
+    def _worker():
+        import subprocess
+        try:
+            res = subprocess.run(
+                ["sudo", "nmcli", "connection", "up", con_name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if res.returncode == 0:
+                gui.splash(f"Connected:\n{con_name[:14]}", delay_seconds=2.0)
+            else:
+                gui.splash(f"Connect failed:\n{con_name[:14]}", delay_seconds=2.0)
+        except Exception as e:
+            gui.splash(f"Error:\n{str(e)[:14]}", delay_seconds=2.0)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+def _make_wifi_select_items(gui: "LCDGui") -> list[MenuBase]:
+    import subprocess
+    items: list[MenuBase] = []
+    known = [
+        ("eduroam", "eduroam"),
+        ("Quetzalcoatl", "Quetzalcoatl"),
+        ("OpenCAL-Hotspot", "OpenCAL Hotspot"),
+        ("UTU_Staff", "UTU Staff"),
+    ]
+
+    active_con = ""
+    try:
+        out = subprocess.check_output(
+            ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"],
+            timeout=1.0,
+            text=True,
+        )
+        for line in out.strip().splitlines():
+            parts = line.split(":")
+            if len(parts) >= 2 and ("wifi" in parts[1].lower() or "wireless" in parts[1].lower()):
+                active_con = parts[0]
+                break
+    except Exception:
+        pass
+
+    for con_id, label in known:
+        prefix = "* " if con_id == active_con else "  "
+        items.append(ActionItem(f"{prefix}{label[:14]}", lambda cid=con_id, g=gui: _switch_wifi_async(cid, g)))
+
+    return items
+
 
 # ---------------------------------------------------------------------------
 # Tree builder
@@ -371,12 +424,12 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
         return [PrintLaunchItem(f, pc) for f in pc.hardware.usb_device.get_file_names()]
 
     def _make_calib_items() -> list[MenuBase]:
-        calib_dir = pc.hardware.projector.calibration_dir_path
+        calib_dir = Path(__file__).parent.parent / "utils" / "calibration"
         return [
             PyGameMenu(
                 title=f,
                 input_q=input_q,
-                mode_name="calibration",
+                mode_name="calibration_image",
                 mode_kwargs={"image_path": calib_dir / f},
             )
             for f in pc.hardware.projector.get_calibration_file_names()
@@ -426,6 +479,7 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
         #     min_val=1, max_val=60, step=1,
         # ),
         NetworkInfoMenu(),
+        DynamicNavigationMenu("Select Wi-Fi", refresh=lambda: _make_wifi_select_items(gui)),
         DynamicNavigationMenu("Calibration Images", refresh=_make_calib_items),
         PyGameMenu(
             title="Show Alignment",

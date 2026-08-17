@@ -590,6 +590,11 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 });
                 html += '</div>';
                 div.innerHTML = html;
+            } catch (e) {
+                div.innerHTML = '<div style="color: var(--accent-rose);">Scan failed: ' + e + '</div>';
+            }
+        }
+
         // Device Authentication
         function checkDeviceAuth() {
             const token = localStorage.getItem('opencal_auth_token') || sessionStorage.getItem('opencal_auth_token');
