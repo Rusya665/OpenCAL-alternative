@@ -151,13 +151,7 @@ class CameraController:
                 video_config["controls"]["AfMode"] = controls.AfModeEnum.Continuous
             self.picam.configure(video_config)
             encoder = H264Encoder()
-            try:
-                from picamera2.outputs import FfmpegOutput
-                output = FfmpegOutput(str(file))
-            except Exception:
-                output = str(file)
-
-            self.picam.start_recording(encoder=encoder, output=output)
+            self.picam.start_recording(encoder=encoder, output=str(file))
             self._current_recording_file = file
             print(f"DEBUG: Camera recording started -> {file}")
             return file
