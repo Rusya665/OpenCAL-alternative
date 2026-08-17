@@ -18,14 +18,15 @@ except ImportError:
 
 
 class NewhavenLCDBackend:
-    """Robust Sequential Framebuffer Driver for Newhaven NHD-0420D3Z."""
+    """Robust 1-Byte Framed Hardware Driver for Newhaven NHD-0420D3Z."""
     DEFAULT_ADDRESS = 0x28
+    ROW_ADDRS = [0x00, 0x40, 0x14, 0x54]
 
     def __init__(self, bus_num: int = 1, address: int = DEFAULT_ADDRESS, contrast: int = 42, backlight: int = 8):
         self.bus_num = bus_num
         self.address = address
         self._lock = threading.RLock()
-        self.char_delay = 0.0025  # 2.5ms per char prevents PIC buffer drops under CPU load
+        self.char_delay = 0.0025  # 2.5ms per character
         time.sleep(0.2)
         if HAS_SMBUS2:
             try:
@@ -41,52 +42,62 @@ class NewhavenLCDBackend:
         self.set_contrast(contrast)
         self.clear()
 
-    def _send_cmd(self, cmd_bytes: list[int], delay: float = 0.050):
+    def _send_byte(self, byte_val: int, delay: float = 0.0025):
         if not self.bus:
             return
-        with self._lock:
-            try:
-                msg = i2c_msg.write(self.address, cmd_bytes)
-                self.bus.i2c_rdwr(msg)
-            except Exception as e:
-                print(f"I2C Cmd Error: {e}")
-            time.sleep(delay)
+        try:
+            msg = i2c_msg.write(self.address, [byte_val])
+            self.bus.i2c_rdwr(msg)
+        except Exception as e:
+            print(f"I2C Byte Error: {e}")
+        time.sleep(delay)
 
     def display_on(self):
-        self._send_cmd([0xFE, 0x41], delay=0.020)
+        with self._lock:
+            self._send_byte(0xFE, 0.003)
+            self._send_byte(0x41, 0.020)
 
     def set_contrast(self, level: int):
         level = max(1, min(50, level))
-        self._send_cmd([0xFE, 0x52, level], delay=0.020)
+        with self._lock:
+            self._send_byte(0xFE, 0.003)
+            self._send_byte(0x52, 0.003)
+            self._send_byte(level, 0.020)
 
     def set_backlight(self, level: int):
         level = max(1, min(8, level))
-        self._send_cmd([0xFE, 0x53, level], delay=0.020)
+        with self._lock:
+            self._send_byte(0xFE, 0.003)
+            self._send_byte(0x53, 0.003)
+            self._send_byte(level, 0.020)
 
     def render_frame(self, line0: str = "", line1: str = "", line2: str = "", line3: str = ""):
         """
-        Pads 4 lines to 20 chars and writes exactly 80 bytes in HD44780 sequential order:
-        Line 0 (0x00) -> Line 2 (0x14) -> Line 1 (0x40) -> Line 3 (0x54)
+        Explicit 4-Row DDRAM Addressed Frame Rendering:
+        Anchors cursor to [0x00, 0x40, 0x14, 0x54] before writing each row.
+        Guarantees 100% position lock with zero drift under continuous scrolling.
         """
         if not self.bus:
             return
-        l0 = line0.ljust(20)[:20]
-        l1 = line1.ljust(20)[:20]
-        l2 = line2.ljust(20)[:20]
-        l3 = line3.ljust(20)[:20]
-        payload = (l0 + l2 + l1 + l3).encode("latin-1", errors="replace")
-
+        lines = [line0, line1, line2, line3]
         with self._lock:
             try:
-                for char_byte in payload:
-                    msg = i2c_msg.write(self.address, [char_byte])
-                    self.bus.i2c_rdwr(msg)
-                    time.sleep(self.char_delay)
+                for row_idx, line in enumerate(lines):
+                    # 1. Explicitly position hardware cursor for this row
+                    self._send_byte(0xFE, 0.002)
+                    self._send_byte(0x45, 0.002)
+                    self._send_byte(self.ROW_ADDRS[row_idx], 0.003)
+                    # 2. Write 20 characters for this row
+                    padded_line = line.ljust(20)[:20].encode("latin-1", errors="replace")
+                    for char_byte in padded_line:
+                        self._send_byte(char_byte, self.char_delay)
             except Exception as e:
                 print(f"I2C Render Error: {e}")
 
     def clear(self):
-        self.render_frame(" ", " ", " ", " ")
+        with self._lock:
+            self._send_byte(0xFE, 0.003)
+            self._send_byte(0x51, 0.100)
 
     def close(self):
         with self._lock:
