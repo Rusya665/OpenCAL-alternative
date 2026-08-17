@@ -22,6 +22,8 @@ def main():
 
     conf = load_config()
     pc = PrintController(conf, video_playing=video_playing)
+    if pc.hardware and pc.hardware.projector:
+        pc.hardware.projector.video_playing = video_playing
 
     # Launch Web Console concurrently on Port 5000 sharing the same hardware
     try:

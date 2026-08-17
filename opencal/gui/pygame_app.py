@@ -37,6 +37,7 @@ class PygameApp:
         self._mode_registry: dict[str, type[BasePygameMode]] = {
             "vial_width": VialWidthMode,
             "calibration": CalibrationMode,
+            "calibration_image": CalibrationMode,
             "alignment": AlignmentMode,
         }
 
@@ -46,6 +47,10 @@ class PygameApp:
             return
 
         while not self.stop_event.is_set():
+            if self.video_playing.is_set():
+                time.sleep(0.1)
+                continue
+
             pygame.display.init()
             pygame.font.init()
             try:
@@ -56,22 +61,20 @@ class PygameApp:
             try:
                 screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
             except Exception as e:
-                print(f"WARNING: PyGame display init failed ({e}), running in LCD-only mode.")
-                while not self.stop_event.is_set():
-                    time.sleep(0.5)
-                return
+                print(f"WARNING: PyGame display init failed ({e}), retrying in 1s...")
+                time.sleep(1.0)
+                continue
+
             pygame.mouse.set_visible(False)
             self.width, self.height = screen.get_size()
             clock = pygame.time.Clock()
             self._running = True
 
-            while self._running and not self.stop_event.is_set():
-                if self.video_playing.is_set():
-                    break
-
+            while self._running and not self.stop_event.is_set() and not self.video_playing.is_set():
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         self._running = False
+                        break
 
                 while not self.input_q.empty():
                     try:
@@ -86,15 +89,15 @@ class PygameApp:
                 pygame.display.flip()
                 _ = clock.tick(self.fps)
 
-            pygame.quit()
+            try:
+                pygame.quit()
+            except Exception:
+                pass
 
-            if not self._running or self.stop_event.is_set():
-                break
-
-            while self.video_playing.is_set():
-                if self.stop_event.is_set():
-                    return
+            # Wait while video is actively playing or before re-initializing
+            while self.video_playing.is_set() and not self.stop_event.is_set():
                 time.sleep(0.1)
+            time.sleep(0.1)
 
     def _dispatch(self, msg: InputEvent) -> None:
         match msg:

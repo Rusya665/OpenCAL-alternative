@@ -56,6 +56,7 @@ class Projector:
         self.thread = None  # We'll use this to keep track of the playback thread.
         self._orientation = None
         self.volume = 20  # Boot default: 20%
+        self.video_playing: threading.Event | None = None
         self.set_volume(20)
 
     def get_projector_orientation(self) -> ProjectorOrientation:
@@ -149,8 +150,21 @@ class Projector:
         ]
         print(" ".join(command))
 
+        if self.video_playing:
+            self.video_playing.set()
         self.process = subprocess.Popen(command, env=env)
+        threading.Thread(target=self._monitor_playback, args=(self.process,), daemon=True).start()
         print("Video playback started.")
+
+    def _monitor_playback(self, proc):
+        try:
+            proc.wait()
+        except Exception:
+            pass
+        if self.video_playing:
+            self.video_playing.clear()
+        if self.process == proc:
+            self.process = None
 
     def get_calibration_file_names(self) -> list[str]:
         files = sorted(path.name for path in self.calibration_dir_path.glob("*.png"))
@@ -210,7 +224,10 @@ class Projector:
             f"--gain={vlc_gain:.2f}",
             str(video_path),
         ]
+        if self.video_playing:
+            self.video_playing.set()
         self.process = subprocess.Popen(command, env=env)
+        threading.Thread(target=self._monitor_playback, args=(self.process,), daemon=True).start()
         print(f"Playing experimental video: {video_path} at volume {self.volume}%")
 
     def stop_video(self):
@@ -218,10 +235,18 @@ class Projector:
         Stop the video playback by terminating the cvlc process.
         """
         if self.process is not None:
-            self.process.terminate()
-            _ = self.process.wait()
+            try:
+                self.process.terminate()
+                _ = self.process.wait(timeout=2.0)
+            except Exception:
+                try:
+                    self.process.kill()
+                except Exception:
+                    pass
             self.process = None
             print("Video playback stopped.")
+        if self.video_playing:
+            self.video_playing.clear()
 
     def start_video_thread(self, video_path: Path | None = None):
         """
