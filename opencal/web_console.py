@@ -351,25 +351,33 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         <!-- 6. SYSTEM METRICS & TELEMETRY -->
         <div class="card">
             <div class="card-title">
-                <span>📊 Raspberry Pi 5 Telemetry</span>
+                <span>📊 Network & System Telemetry</span>
                 <span style="font-size: 12px; color: var(--accent-cyan);">BCM2712</span>
             </div>
             <div class="telemetry-row">
-                <span class="telemetry-label">CPU Temperature:</span>
-                <span class="telemetry-val" id="cpu-temp">-- °C</span>
+                <span class="telemetry-label">Active Wi-Fi:</span>
+                <span class="telemetry-val" id="net-ssid" style="color: var(--accent-green);">--</span>
             </div>
             <div class="telemetry-row">
-                <span class="telemetry-label">RAM Usage:</span>
-                <span class="telemetry-val" id="ram-usage">--</span>
+                <span class="telemetry-label">Campus/Local IP:</span>
+                <span class="telemetry-val" id="net-local-ip">--</span>
+            </div>
+            <div class="telemetry-row">
+                <span class="telemetry-label">Tailscale IP:</span>
+                <span class="telemetry-val" id="net-ts-ip" style="color: var(--accent-cyan);">--</span>
+            </div>
+            <div class="telemetry-row">
+                <span class="telemetry-label">CPU Temp / RAM:</span>
+                <span class="telemetry-val" id="cpu-temp">--</span>
             </div>
             <div class="telemetry-row">
                 <span class="telemetry-label">Disk Storage:</span>
                 <span class="telemetry-val" id="disk-usage">--</span>
             </div>
-            <div class="telemetry-row">
-                <span class="telemetry-label">Machine IP:</span>
-                <span class="telemetry-val">10.49.26.109</span>
+            <div class="btn-group" style="margin-top: 14px;">
+                <button onclick="scanWifiNetworks()">📡 Scan Nearby Wi-Fi</button>
             </div>
+            <div id="wifi-scan-results" style="margin-top: 10px; display: none; font-size: 12px;"></div>
         </div>
     </div>
 
@@ -523,15 +531,47 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                     document.getElementById('lcd-r3').innerText = data.lcd[3];
                 }
                 if (data.system) {
-                    document.getElementById('cpu-temp').innerText = data.system.cpu_temp + ' °C';
-                    document.getElementById('ram-usage').innerText = data.system.ram_usage;
+                    document.getElementById('cpu-temp').innerText = data.system.cpu_temp + ' °C / ' + data.system.ram_usage;
                     document.getElementById('disk-usage').innerText = data.system.disk_free;
+                }
+                if (data.network) {
+                    document.getElementById('net-ssid').innerText = data.network.ssid;
+                    document.getElementById('net-local-ip').innerText = data.network.local_ip;
+                    document.getElementById('net-ts-ip').innerText = data.network.tailscale_ip;
                 }
                 if (data.print_job) {
                     document.getElementById('print-status-badge').innerText = data.print_job.status;
                     document.getElementById('print-status-badge').style.color = data.print_job.running ? 'var(--accent-green)' : 'var(--accent-amber)';
                 }
             } catch (e) {}
+        }
+
+        async function scanWifiNetworks() {
+            const div = document.getElementById('wifi-scan-results');
+            div.style.display = 'block';
+            div.innerHTML = '<div style="color: var(--accent-cyan); padding: 8px 0;">Scanning nearby Wi-Fi networks...</div>';
+            try {
+                const res = await fetch('/api/wifi/scan');
+                const data = await res.json();
+                if (!data.networks || data.networks.length === 0) {
+                    div.innerHTML = '<div style="color: var(--text-muted);">No networks found.</div>';
+                    return;
+                }
+                let html = '<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">';
+                data.networks.forEach(n => {
+                    const activeBadge = n.in_use ? '<span style="color: var(--accent-green); font-weight: bold;">(Connected)</span>' : '';
+                    html += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.04); padding: 6px 10px; border-radius: 6px;">
+                            <span><b>${n.ssid}</b> ${activeBadge}</span>
+                            <span style="color: var(--text-muted); font-size: 11px;">${n.signal}% | ${n.security}</span>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                div.innerHTML = html;
+            } catch (e) {
+                div.innerHTML = '<div style="color: var(--accent-rose);">Scan failed: ' + e + '</div>';
+            }
         }
 
         setInterval(updateTelemetry, 500);
@@ -601,6 +641,35 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
+                # Get Network Telemetry
+                net_ssid = "Disconnected"
+                try:
+                    out = subprocess.check_output(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"], text=True)
+                    for line in out.strip().splitlines():
+                        parts = line.split(":")
+                        if len(parts) >= 2 and "wifi" in parts[1]:
+                            net_ssid = parts[0]
+                            break
+                except Exception:
+                    pass
+
+                local_ip = "No IP"
+                try:
+                    out = subprocess.check_output(["hostname", "-I"], text=True)
+                    for ip in out.strip().split():
+                        if not ip.startswith("100."):
+                            local_ip = ip
+                            break
+                except Exception:
+                    pass
+
+                ts_ip = "Offline"
+                try:
+                    out = subprocess.check_output(["tailscale", "ip", "-4"], text=True, stderr=subprocess.DEVNULL)
+                    ts_ip = out.strip()
+                except Exception:
+                    pass
+
                 print_running = False
                 if self.print_controller:
                     print_running = getattr(self.print_controller, "running", False)
@@ -614,6 +683,11 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                             "ram_usage": ram_usage,
                             "disk_free": disk_free,
                         },
+                        "network": {
+                            "ssid": net_ssid,
+                            "local_ip": local_ip,
+                            "tailscale_ip": ts_ip,
+                        },
                         "print_job": {
                             "running": print_running,
                             "status": "PRINTING (Active)" if print_running else "IDLE / Ready",
@@ -622,6 +696,29 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 )
             except Exception as e:
                 self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/wifi/scan":
+            networks = []
+            try:
+                out = subprocess.check_output(["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list"], text=True)
+                seen = set()
+                for line in out.strip().splitlines():
+                    parts = line.split(":")
+                    if len(parts) >= 4:
+                        in_use, ssid, sig, sec = parts[0], parts[1], parts[2], parts[3]
+                        if not ssid or ssid in seen:
+                            continue
+                        seen.add(ssid)
+                        networks.append({
+                            "ssid": ssid,
+                            "in_use": in_use == "*",
+                            "signal": sig,
+                            "security": sec
+                        })
+            except Exception as e:
+                print(f"Error scanning wifi: {e}")
+            self._send_json({"networks": networks})
             return
 
         if parsed.path == "/api/prints/list":

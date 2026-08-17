@@ -279,7 +279,79 @@ class AboutMenu(MenuBase):
                 lines.append(self._NAMES[idx][:20].ljust(20))
             else:
                 lines.append(" " * 20)
-        return lines
+class NetworkInfoMenu(MenuBase):
+    """Displays active Wi-Fi SSID, local IP, and Tailscale IP on 20x4 LCD."""
+    def __init__(self):
+        super().__init__()
+        self.title = "Network Info"
+
+    def on_click(self) -> None:
+        if self._gui:
+            self._gui.pop()
+
+    def on_rotate(self, delta: int) -> None:
+        pass
+
+    def render(self) -> list[str]:
+        import subprocess
+        ssid = "Disconnected"
+        try:
+            out = subprocess.check_output(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"], text=True)
+            for line in out.strip().splitlines():
+                parts = line.split(":")
+                if len(parts) >= 2 and "wifi" in parts[1]:
+                    ssid = parts[0]
+                    break
+        except Exception:
+            pass
+
+        local_ip = "No IP"
+        try:
+            out = subprocess.check_output(["hostname", "-I"], text=True)
+            ips = out.strip().split()
+            for ip in ips:
+                if not ip.startswith("100."):
+                    local_ip = ip
+                    break
+        except Exception:
+            pass
+
+        ts_ip = "Offline"
+        try:
+            out = subprocess.check_output(["tailscale", "ip", "-4"], text=True, stderr=subprocess.DEVNULL)
+            ts_ip = out.strip()
+        except Exception:
+            pass
+
+        return [
+            "-- NETWORK INFO --".center(20),
+            f"SSID: {ssid[:14]}".ljust(20),
+            f"IP: {local_ip[:16]}".ljust(20),
+            f"TS: {ts_ip[:16]}".ljust(20),
+        ]
+
+
+def _make_wifi_scan_items(gui: "LCDGui") -> list[MenuBase]:
+    import subprocess
+    items: list[MenuBase] = []
+    try:
+        out = subprocess.check_output(["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list"], text=True)
+        seen = set()
+        for line in out.strip().splitlines():
+            parts = line.split(":")
+            if len(parts) >= 4:
+                in_use, ssid, sig, sec = parts[0], parts[1], parts[2], parts[3]
+                if not ssid or ssid in seen:
+                    continue
+                seen.add(ssid)
+                prefix = "* " if in_use == "*" else "  "
+                title = f"{prefix}{ssid[:12]} {sig}%"
+                items.append(ActionItem(title, lambda s=ssid, g=gui: g.splash(f"WiFi: {s[:14]}", delay_seconds=2.0)))
+    except Exception as e:
+        items.append(ActionItem(f"Scan err: {str(e)[:10]}", lambda: None))
+    if not items:
+        items.append(ActionItem("No networks found", lambda: None))
+    return items
 
 
 # ---------------------------------------------------------------------------
@@ -348,13 +420,9 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
         #     set=lambda v: pc.hardware.stepper.set_rpm(v, ramp_time=1),
         #     min_val=1, max_val=60, step=1,
         # ),
+        NetworkInfoMenu(),
+        DynamicNavigationMenu("Scan Wi-Fi", refresh=lambda: _make_wifi_scan_items(gui)),
         DynamicNavigationMenu("Calibration Images", refresh=_make_calib_items),
-        # MultiSelectMenu(                                              # disabled
-        #     title="Display Orient.",
-        #     choices=[o.value for o in ProjectorOrientation],
-        #     get=pc.hardware.projector.get_projector_orientation,
-        #     set=lambda s: pc.hardware.projector.set_projector_orientation(ProjectorOrientation(s)),
-        # ),
         PyGameMenu(
             title="Show Alignment",
             input_q=input_q,
