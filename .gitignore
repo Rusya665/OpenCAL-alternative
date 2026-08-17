@@ -1,23 +1,39 @@
-~*.sldasm
-
-# Ignore Python virtual environment
+# Python virtual environment
 venv/
 .env/
 .venv/
 uv.lock
 
-# ignore RTD build results
+# Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+.pytest_cache/
+
+# Build & Docs
 docs/build/
 output/
-
-#Ignore video files
-*.mp4
-*.jpg
-*.jpeg
-*.png
-
-__pycache__/
-*.pyc
-*.log
 *.egg
 *.egg-info/
+dist/
+build/
+
+# Media & Runtime Data
+recordings/
+experimental/
+prints/
+*.mp4
+*.h264
+*.jpg
+*.jpeg
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+~*.sldasm
+
