@@ -810,6 +810,25 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data).encode("utf-8"))
 
+    def do_HEAD(self):
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/camera/recordings/"):
+            filename = parsed.path.split("/")[-1]
+            rec_dir = Path.home() / "OpenCAL-alternative" / "recordings"
+            file_path = rec_dir / filename
+            if file_path.exists() and file_path.is_file():
+                self.send_response(200)
+                self.send_header("Content-Type", "video/mp4")
+                self.send_header("Content-Length", str(file_path.stat().st_size))
+                self.send_header("Accept-Ranges", "bytes")
+                self.end_headers()
+                return
+            else:
+                self.send_error(404, "Recording not found")
+                return
+        self.send_response(200)
+        self.end_headers()
+
     def do_GET(self):
         parsed = urlparse(self.path)
 
