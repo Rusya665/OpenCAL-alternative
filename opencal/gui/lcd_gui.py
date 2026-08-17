@@ -572,14 +572,16 @@ class LCDGui:
     def show_startup_screen(self) -> None:
         from threading import Thread
 
-        Thread(target=self.pc.hardware.led_manager.run_start_animation).start()
-        self.pc.hardware.lcd.clear()
-        self.pc.hardware.lcd.write_message("Open   ".center(20), 1, 0)
-        time.sleep(1)
-        self.pc.hardware.lcd.write_message("OpenCAL".center(20), 1, 0)
-        time.sleep(2)
-        self.pc.hardware.lcd.write_message("FOR THE COMMUNITY".center(20), 2, 0)
-        time.sleep(1)
+        if self.pc.hardware.led_manager:
+            Thread(target=self.pc.hardware.led_manager.run_start_animation, daemon=True).start()
+        if hasattr(self.pc.hardware.lcd, "render_page"):
+            self.pc.hardware.lcd.render_page(["", "OpenCAL".center(20), "FOR THE COMMUNITY".center(20), ""])
+            time.sleep(2)
+        else:
+            self.pc.hardware.lcd.clear()
+            self.pc.hardware.lcd.write_message("OpenCAL".center(20), 1, 0)
+            self.pc.hardware.lcd.write_message("FOR THE COMMUNITY".center(20), 2, 0)
+            time.sleep(2)
 
     # ── Main loop ─────────────────────────────────────────────────────────────
 
@@ -612,8 +614,11 @@ class LCDGui:
             if self.stack and not self._splash_active:
                 lines = self.stack[-1].render()
                 if lines != self._last_rendered:
-                    for i, line in enumerate(lines[:4]):
-                        self.pc.hardware.lcd.write_message(line, i, 0)
+                    if hasattr(self.pc.hardware.lcd, "render_page"):
+                        self.pc.hardware.lcd.render_page(lines[:4])
+                    else:
+                        for i, line in enumerate(lines[:4]):
+                            self.pc.hardware.lcd.write_message(line, i, 0)
                     self._last_rendered = list(lines)
 
             time.sleep(1 / self.fps)
