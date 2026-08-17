@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import cgi
 import io
 import json
 import os
@@ -461,10 +460,15 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         async function uploadPrintFile(file) {
             if (!file) return;
             showToast('Uploading ' + file.name + '...');
-            const formData = new FormData();
-            formData.append('file', file);
             try {
-                const res = await fetch('/api/prints/upload', {method: 'POST', body: formData});
+                const res = await fetch('/api/prints/upload?filename=' + encodeURIComponent(file.name), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/octet-stream',
+                        'X-Filename': file.name
+                    },
+                    body: file
+                });
                 const json = await res.json();
                 showToast(json.message || 'File uploaded successfully!');
                 fetchPrintFiles();
@@ -684,26 +688,30 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
 
-        # File upload handling (multipart/form-data)
+        # File upload handling (direct binary upload or query param)
         if parsed.path == "/api/prints/upload":
             try:
-                ctype, pdict = cgi.parse_header(self.headers.get("Content-Type", ""))
-                if ctype == "multipart/form-data":
-                    pdict["boundary"] = bytes(pdict["boundary"], "utf-8")
-                    fields = cgi.parse_multipart(self.rfile, pdict)
-                    files = fields.get("file", [])
-                    if files:
-                        file_data = files[0]
-                        filename = f"upload_{int(time.time())}.mp4"
-                        dest = PRINTS_DIR / filename
-                        with open(dest, "wb") as f:
-                            f.write(file_data)
-                        self._send_json({"message": f"Uploaded {filename} successfully!"})
-                        return
-                self._send_json({"error": "Invalid upload payload"}, status=400)
+                content_len = int(self.headers.get("Content-Length", 0))
+                filename = self.headers.get("X-Filename", "")
+                if not filename:
+                    qs = parse_qs(parsed.query)
+                    filename = qs.get("filename", [f"upload_{int(time.time())}.mp4"])[0]
+                clean_filename = Path(filename).name
+                dest = PRINTS_DIR / clean_filename
+                with open(dest, "wb") as f:
+                    remaining = content_len
+                    chunk_size = 64 * 1024
+                    while remaining > 0:
+                        chunk = self.rfile.read(min(remaining, chunk_size))
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        remaining -= len(chunk)
+                self._send_json({"message": f"Uploaded {clean_filename} successfully!"})
+                return
             except Exception as e:
                 self._send_json({"error": str(e)}, status=500)
-            return
+                return
 
         content_len = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_len) if content_len > 0 else b"{}"
