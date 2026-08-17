@@ -8,6 +8,7 @@ from opencal.gui.lcd_gui import LCDGui
 from opencal.gui.menus import build_menu_tree
 from opencal.gui.pygame_app import PygameApp
 from opencal.utils.config import load_config
+from opencal.web_console import start_web_console_thread
 
 
 def main():
@@ -21,6 +22,13 @@ def main():
 
     conf = load_config()
     pc = PrintController(conf, video_playing=video_playing)
+
+    # Launch Web Console concurrently on Port 5000 sharing the same hardware
+    try:
+        start_web_console_thread(pc.hardware, port=5000)
+    except Exception as e:
+        print(f"Warning: Could not start background Web Console: {e}")
+
     gui = LCDGui(pc=pc, input_q=input_q, pygame_q=pygame_q, stop_event=stop_event)
     root = build_menu_tree(pc, gui)
     gui.set_root(root)

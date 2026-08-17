@@ -7,9 +7,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from opencal.utils.config import Config
 from opencal.hardware.hardware_controller import HardwareController
-from opencal.hardware.led_manager import RED, GREEN, BLUE, YELLOW, WHITE, OFF
+from opencal.hardware.led_manager import BLUE, GREEN, OFF, RED, WHITE, YELLOW
+from opencal.utils.config import Config
 
 # OpenCAL Interactive Documentation & Control Pages for Rotary Knob
 OPENCAL_PAGES = [
@@ -19,10 +19,10 @@ OPENCAL_PAGES = [
             "OpenCAL 3D Printer  ",
             "Hardware: ONLINE    ",
             "IP: 10.49.26.109    ",
-            "[Knob: Turn to Nav] "
+            "[Knob: Turn to Nav] ",
         ],
         "action": "refresh",
-        "action_desc": "Refreshed Status"
+        "action_desc": "Refreshed Status",
     },
     {
         "title": "STEPPER MOTOR JOG",
@@ -30,10 +30,10 @@ OPENCAL_PAGES = [
             "== VAM ROTATION ==  ",
             "Target: 9.0 RPM     ",
             "1/16 Microstepping  ",
-            "[Press: 360 Spin]   "
+            "[Press: 360 Spin]   ",
         ],
         "action": "jog_motor_360",
-        "action_desc": "Jogged 360 Degrees"
+        "action_desc": "Jogged 360 Degrees",
     },
     {
         "title": "64-LED RING CONTROL",
@@ -41,10 +41,10 @@ OPENCAL_PAGES = [
             "== 64-LED RING ==   ",
             "Pattern: Rainbow Arc",
             "Brightness: 100%    ",
-            "[Press: LED Rainbow]"
+            "[Press: LED Rainbow]",
         ],
         "action": "run_rainbow",
-        "action_desc": "Rainbow Animation"
+        "action_desc": "Rainbow Animation",
     },
     {
         "title": "CAMERA IMX708 FOCUS",
@@ -52,10 +52,10 @@ OPENCAL_PAGES = [
             "== CAMERA IMX708 == ",
             "Sony 12MP Autofocus ",
             "Stream: 30 FPS Live ",
-            "[Press: Auto-Focus] "
+            "[Press: Auto-Focus] ",
         ],
         "action": "trigger_autofocus",
-        "action_desc": "Triggered Autofocus"
+        "action_desc": "Triggered Autofocus",
     },
     {
         "title": "VAM PRINT PROCESS",
@@ -63,10 +63,10 @@ OPENCAL_PAGES = [
             "== VAM PRINTING ==  ",
             "Computed Axial Litho",
             "Vial Rotation Ready ",
-            "[Press: Start Print]"
+            "[Press: Start Print]",
         ],
         "action": "start_print_demo",
-        "action_desc": "VAM Print Demo Started"
+        "action_desc": "VAM Print Demo Started",
     },
     {
         "title": "ABOUT OPENCAL",
@@ -74,11 +74,11 @@ OPENCAL_PAGES = [
             "OpenCAL 2026 Build  ",
             "VAM Volumetric Print",
             "Univ of Turku Lab   ",
-            "[Knob: Turn to Nav] "
+            "[Knob: Turn to Nav] ",
         ],
         "action": "refresh",
-        "action_desc": "About OpenCAL"
-    }
+        "action_desc": "About OpenCAL",
+    },
 ]
 
 HTML_DASHBOARD = """<!DOCTYPE html>
@@ -486,26 +486,37 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                     pass
 
             pos = 0
-            if self.hardware and self.hardware.stepper and hasattr(self.hardware.stepper, "tic") and self.hardware.stepper.tic:
+            if (
+                self.hardware
+                and self.hardware.stepper
+                and hasattr(self.hardware.stepper, "tic")
+                and self.hardware.stepper.tic
+            ):
                 try:
                     pos = self.hardware.stepper.tic.get_current_position()
                 except Exception:
                     pass
 
             page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
-            lcd_lines = getattr(self.hardware.lcd, "framebuffer", page["lines"]) if self.hardware and self.hardware.lcd else page["lines"]
+            lcd_lines = (
+                getattr(self.hardware.lcd, "framebuffer", page["lines"])
+                if self.hardware and self.hardware.lcd
+                else page["lines"]
+            )
 
-            self._send_json({
-                "rotary": {"steps": steps, "button": btn_active},
-                "stepper": {"position": pos},
-                "pager": {
-                    "index": WebConsoleHandler.current_doc_page,
-                    "total": len(OPENCAL_PAGES),
-                    "title": page["title"],
-                    "action_desc": page["action_desc"]
-                },
-                "lcd": lcd_lines
-            })
+            self._send_json(
+                {
+                    "rotary": {"steps": steps, "button": btn_active},
+                    "stepper": {"position": pos},
+                    "pager": {
+                        "index": WebConsoleHandler.current_doc_page,
+                        "total": len(OPENCAL_PAGES),
+                        "title": page["title"],
+                        "action_desc": page["action_desc"],
+                    },
+                    "lcd": lcd_lines,
+                }
+            )
             return
 
         if parsed.path == "/api/camera/stream":
@@ -572,15 +583,27 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
 
         # 1. PAGER & ROTARY ACTIONS
         if parsed.path == "/api/pager/next":
-            WebConsoleHandler.current_doc_page = (WebConsoleHandler.current_doc_page + 1) % len(OPENCAL_PAGES)
+            WebConsoleHandler.current_doc_page = (WebConsoleHandler.current_doc_page + 1) % len(
+                OPENCAL_PAGES
+            )
             self._render_current_page()
-            self._send_json({"message": f"Switched to {OPENCAL_PAGES[WebConsoleHandler.current_doc_page]['title']}"})
+            self._send_json(
+                {
+                    "message": f"Switched to {OPENCAL_PAGES[WebConsoleHandler.current_doc_page]['title']}"
+                }
+            )
             return
 
         if parsed.path == "/api/pager/prev":
-            WebConsoleHandler.current_doc_page = (WebConsoleHandler.current_doc_page - 1) % len(OPENCAL_PAGES)
+            WebConsoleHandler.current_doc_page = (WebConsoleHandler.current_doc_page - 1) % len(
+                OPENCAL_PAGES
+            )
             self._render_current_page()
-            self._send_json({"message": f"Switched to {OPENCAL_PAGES[WebConsoleHandler.current_doc_page]['title']}"})
+            self._send_json(
+                {
+                    "message": f"Switched to {OPENCAL_PAGES[WebConsoleHandler.current_doc_page]['title']}"
+                }
+            )
             return
 
         if parsed.path == "/api/pager/action":
@@ -676,7 +699,15 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/led/color":
             try:
                 col_str = data.get("color", "white").lower()
-                cmap = {"red": RED, "green": GREEN, "blue": BLUE, "yellow": YELLOW, "white": WHITE, "cyan": (0, 255, 255), "off": OFF}
+                cmap = {
+                    "red": RED,
+                    "green": GREEN,
+                    "blue": BLUE,
+                    "yellow": YELLOW,
+                    "white": WHITE,
+                    "cyan": (0, 255, 255),
+                    "off": OFF,
+                }
                 color = cmap.get(col_str, WHITE)
                 if self.hardware and self.hardware.led_manager:
                     self.hardware.led_manager.set_color(color)
@@ -722,7 +753,9 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 return "Motor Jogged 360 Degrees"
             elif action == "run_rainbow":
                 if self.hardware and self.hardware.led_manager:
-                    threading.Thread(target=self._run_led_anim, args=("rainbow",), daemon=True).start()
+                    threading.Thread(
+                        target=self._run_led_anim, args=("rainbow",), daemon=True
+                    ).start()
                 return "LED Rainbow Started"
             elif action == "trigger_autofocus":
                 if self.hardware and self.hardware.camera:
@@ -745,7 +778,15 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
         try:
             if anim_name == "rainbow":
                 for _ in range(3):
-                    for color in [(255,0,0), (255,127,0), (255,255,0), (0,255,0), (0,255,255), (0,0,255), (139,0,255)]:
+                    for color in [
+                        (255, 0, 0),
+                        (255, 127, 0),
+                        (255, 255, 0),
+                        (0, 255, 0),
+                        (0, 255, 255),
+                        (0, 0, 255),
+                        (139, 0, 255),
+                    ]:
                         self.hardware.led_manager.set_color(color)
                         time.sleep(0.12)
                 self.hardware.led_manager.set_color(WHITE)
@@ -767,7 +808,7 @@ def rotary_hardware_listener(hardware: HardwareController):
     if not hardware or not hardware.rotary:
         return
     last_step = hardware.rotary.get_steps()
-    
+
     # Initialize LCD with Page 0
     page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
     if hardware.lcd:
@@ -779,7 +820,9 @@ def rotary_hardware_listener(hardware: HardwareController):
             diff = current_step - last_step
             if diff != 0:  # Any physical click / detent
                 direction = 1 if diff > 0 else -1
-                WebConsoleHandler.current_doc_page = (WebConsoleHandler.current_doc_page + direction) % len(OPENCAL_PAGES)
+                WebConsoleHandler.current_doc_page = (
+                    WebConsoleHandler.current_doc_page + direction
+                ) % len(OPENCAL_PAGES)
                 page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
                 if hardware.lcd:
                     hardware.lcd.render_page(page["lines"])
@@ -796,7 +839,7 @@ def rotary_hardware_listener(hardware: HardwareController):
                 if action == "jog_motor_360" and hardware.stepper:
                     hardware.stepper.rotate_steps(3200, direction="CW")
                 elif action == "run_rainbow" and hardware.led_manager:
-                    for color in [(255,0,0), (0,255,0), (0,0,255), (255,255,255)]:
+                    for color in [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 255)]:
                         hardware.led_manager.set_color(color)
                         time.sleep(0.15)
                 elif action == "trigger_autofocus" and hardware.camera:
@@ -813,11 +856,21 @@ def rotary_hardware_listener(hardware: HardwareController):
             time.sleep(0.1)
 
 
+def start_web_console_thread(hardware: HardwareController, host="0.0.0.0", port=5000) -> threading.Thread:
+    """Starts the Web Console server in a background daemon thread sharing the existing hardware instance."""
+    WebConsoleHandler.hardware = hardware
+    server = ThreadingHTTPServer((host, port), WebConsoleHandler)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    print(f"🚀 OpenCAL Web Console is live at http://0.0.0.0:{port}")
+    return server_thread
+
+
 def run_web_console(host="0.0.0.0", port=5000):
     print("=" * 60)
     print("     STARTING OPENCAL HARDWARE WEB CONSOLE (PORT 5000)   ")
     print("=" * 60)
-    
+
     cfg = Config()
     hardware = HardwareController(cfg)
     WebConsoleHandler.hardware = hardware
