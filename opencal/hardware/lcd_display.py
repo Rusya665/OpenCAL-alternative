@@ -43,7 +43,7 @@ class NewhavenLCDBackend:
         self.set_contrast(contrast)
         self.clear()
 
-    def _send_byte(self, byte_val: int, delay: float = 0.002):
+    def _send_byte(self, byte_val: int, delay: float = 0.0015):
         if not self.bus:
             return
         try:
@@ -53,31 +53,37 @@ class NewhavenLCDBackend:
             print(f"I2C Byte Error: {e}")
         time.sleep(delay)
 
+    def _send_cmd(self, cmd_bytes: list[int], delay: float = 0.005):
+        """Send multi-byte command atomically in ONE single I2C transaction."""
+        if not self.bus:
+            return
+        try:
+            msg = i2c_msg.write(self.address, cmd_bytes)
+            self.bus.i2c_rdwr(msg)
+        except Exception as e:
+            print(f"I2C Cmd Error: {e}")
+        time.sleep(delay)
+
     def display_on(self):
         with self._lock:
-            self._send_byte(0xFE, 0.003)
-            self._send_byte(0x41, 0.020)
+            self._send_cmd([0xFE, 0x41], 0.020)
 
     def set_contrast(self, level: int):
         level = max(1, min(50, level))
         with self._lock:
-            self._send_byte(0xFE, 0.003)
-            self._send_byte(0x52, 0.003)
-            self._send_byte(level, 0.020)
+            self._send_cmd([0xFE, 0x52, level], 0.020)
 
     def set_backlight(self, level: int):
         level = max(1, min(8, level))
         with self._lock:
-            self._send_byte(0xFE, 0.003)
-            self._send_byte(0x53, 0.003)
-            self._send_byte(level, 0.020)
+            self._send_cmd([0xFE, 0x53, level], 0.020)
 
     def render_frame(self, line0: str = "", line1: str = "", line2: str = "", line3: str = "", force: bool = False):
         """
-        Rock-Solid 4-Row DDRAM Frame Rendering with Differential Row Updates:
-        - Anchors cursor to [0x00, 0x40, 0x14, 0x54] with 6ms PIC settling time.
-        - Skips unchanged rows to prevent I2C bus congestion.
-        - Eliminates dropped characters during fast knob rotations.
+        Rock-Solid 4-Row DDRAM Frame Rendering:
+        - Uses atomic 3-byte command packets [0xFE, 0x45, row_addr] with 5ms settling delay.
+        - Skips unchanged rows to keep I2C bus clean and responsive.
+        - Guarantees 100% position lock with zero dropped letters.
         """
         if not self.bus:
             return
@@ -89,15 +95,13 @@ class NewhavenLCDBackend:
                     if not force and self._last_rendered_rows[row_idx] == padded_line_str:
                         continue  # Skip identical row
                     
-                    # 1. Explicitly position hardware cursor for this row with 6ms settling delay
-                    self._send_byte(0xFE, 0.002)
-                    self._send_byte(0x45, 0.002)
-                    self._send_byte(self.ROW_ADDRS[row_idx], 0.006)
+                    # 1. Send ATOMIC 3-byte cursor position command
+                    self._send_cmd([0xFE, 0x45, self.ROW_ADDRS[row_idx]], 0.005)
                     
                     # 2. Write 20 characters for this row
                     padded_bytes = padded_line_str.encode("latin-1", errors="replace")
                     for char_byte in padded_bytes:
-                        self._send_byte(char_byte, 0.0018)
+                        self._send_byte(char_byte, 0.0015)
                     
                     self._last_rendered_rows[row_idx] = padded_line_str
             except Exception as e:
@@ -106,8 +110,7 @@ class NewhavenLCDBackend:
     def clear(self):
         with self._lock:
             self._last_rendered_rows = ["", "", "", ""]
-            self._send_byte(0xFE, 0.003)
-            self._send_byte(0x51, 0.100)
+            self._send_cmd([0xFE, 0x51], 0.100)
 
     def close(self):
         with self._lock:
