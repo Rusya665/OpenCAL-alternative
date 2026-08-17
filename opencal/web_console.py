@@ -445,6 +445,11 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <span style="font-size: 12px; color: var(--accent-purple);">HDMI Display</span>
             </div>
             
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+                <span style="font-size: 13px; font-weight: 500;">🔊 System & UI Sounds:</span>
+                <button id="btn-toggle-sounds" class="primary" style="padding: 4px 12px; font-size: 12px; border-radius: 6px;" onclick="toggleSounds()">🔊 Sounds: ON</button>
+            </div>
+
             <div class="slider-group" style="margin-bottom: 12px;">
                 <label>Projector Speaker Volume:</label>
                 <input type="range" id="proj-vol-slider" min="0" max="100" value="20" oninput="setProjectorVolume(this.value)">
@@ -588,6 +593,23 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 `).join('');
             } catch(e) {
                 console.error("Error loading recordings:", e);
+            }
+        }
+
+        // System Sounds & Projector functions
+        let soundsEnabled = true;
+        function toggleSounds() {
+            soundsEnabled = !soundsEnabled;
+            updateSoundsBtn();
+            postAPI('/api/sounds/toggle', {enabled: soundsEnabled});
+        }
+        function updateSoundsBtn() {
+            const btn = document.getElementById('btn-toggle-sounds');
+            if (btn) {
+                btn.innerText = soundsEnabled ? '🔊 Sounds: ON' : '🔇 Sounds: OFF';
+                btn.style.background = soundsEnabled ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+                btn.style.color = soundsEnabled ? 'var(--accent-green)' : 'var(--accent-red)';
+                btn.style.borderColor = soundsEnabled ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)';
             }
         }
 
@@ -752,6 +774,10 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                         const sign = data.alignment_y_offset_px > 0 ? '+' : '';
                         document.getElementById('align-y-val').innerText = sign + data.alignment_y_offset_px + ' px';
                     }
+                }
+                if (data.sounds_enabled !== undefined && data.sounds_enabled !== soundsEnabled) {
+                    soundsEnabled = data.sounds_enabled;
+                    updateSoundsBtn();
                 }
             } catch (e) {}
         }
@@ -984,6 +1010,11 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                             self.hardware.projector.get_alignment_offset()
                             if (self.hardware and self.hardware.projector)
                             else 0
+                        ),
+                        "sounds_enabled": (
+                            self.hardware.sound_manager.is_enabled()
+                            if (self.hardware and getattr(self.hardware, "sound_manager", None))
+                            else True
                         ),
                     }
                 )
@@ -1456,9 +1487,24 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(e)}, status=500)
             return
 
+        if parsed.path == "/api/sounds/toggle":
+            try:
+                sm = getattr(self.hardware, "sound_manager", None)
+                if sm:
+                    enabled = bool(data.get("enabled", not sm.is_enabled()))
+                    sm.set_enabled(enabled, persist=True)
+                    self._send_json({"message": f"Sounds set to {'ON' if enabled else 'OFF'} and saved to config!"})
+                else:
+                    self._send_json({"error": "SoundManager not available"}, status=500)
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
         # 7. SYSTEM CONTROLS
         if parsed.path == "/api/system/restart_app":
             def _restart():
+                if self.hardware and getattr(self.hardware, "sound_manager", None):
+                    self.hardware.sound_manager.play_shutdown()
                 proj = getattr(self.hardware, "projector", None) or (getattr(self.print_controller, "hardware", None) and getattr(self.print_controller.hardware, "projector", None))
                 if proj:
                     proj.turn_off_projector()
@@ -1469,7 +1515,12 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/system/reboot":
-            threading.Thread(target=lambda: (time.sleep(1), subprocess.run(["sudo", "reboot"])), daemon=True).start()
+            def _reboot():
+                if self.hardware and getattr(self.hardware, "sound_manager", None):
+                    self.hardware.sound_manager.play_shutdown()
+                time.sleep(1.0)
+                subprocess.run(["sudo", "reboot"])
+            threading.Thread(target=_reboot, daemon=True).start()
             self._send_json({"message": "Rebooting system in 1 second..."})
             return
 

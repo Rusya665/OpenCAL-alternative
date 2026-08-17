@@ -4,6 +4,7 @@ from .led_manager import LEDManager
 from .lcd_display import LCDDisplay
 from .rotary_controller import RotaryEncoderHandler
 from .projector_controller import Projector
+from .sound_manager import SoundManager
 from .usb_manager import MP4Driver
 from opencal.utils.config import Config
 
@@ -31,8 +32,14 @@ class HardwareController:
         self.lcd = None
         self.rotary = None
         self.projector = None
+        self.sound_manager = None
         self.usb_device = None
         self.camera = None
+
+        try:
+            self.sound_manager = SoundManager(sounds_enabled=getattr(config.ui, "sounds_enabled", True))
+        except Exception as e:
+            self.errors.append(f"SoundManager failed: {e}")
 
         try:
             print("initializing stepper")

@@ -124,6 +124,7 @@ class ProjectorConfig:
         self.calibration_dir_path: str = config["calibration_dir_path"]
         self.vial_width_px: int = int(config.get("vial_width_px", 200))
         self.alignment_y_offset_px: int = int(config.get("alignment_y_offset_px", 0))
+        self.default_volume: int = int(config.get("default_volume", 20))
 
 
 def save_vial_width(width: int, path: Path = CFG_PATH) -> None:
@@ -156,7 +157,39 @@ def save_alignment_offset(offset: int, path: Path = CFG_PATH) -> None:
         print(f"Error saving alignment offset to {path}: {e}")
 
 
+def save_projector_volume(volume: int, path: Path = CFG_PATH) -> None:
+    """Persist projector volume percentage (0-100) to config.json."""
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        if "projector" not in data:
+            data["projector"] = {}
+        data["projector"]["default_volume"] = int(volume)
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+        print(f"✓ Saved default_volume = {volume} to {path}")
+    except Exception as e:
+        print(f"Error saving projector volume to {path}: {e}")
+
+
+def save_sounds_enabled(enabled: bool, path: Path = CFG_PATH) -> None:
+    """Persist sounds enabled/disabled boolean setting to config.json."""
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        if "ui" not in data:
+            data["ui"] = {}
+        data["ui"]["sounds_enabled"] = bool(enabled)
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+        print(f"✓ Saved sounds_enabled = {enabled} to {path}")
+    except Exception as e:
+        print(f"Error saving sounds setting to {path}: {e}")
+
+
 class UIConfig:
     def __init__(self, config: dict[str, Any]):
-        self.prompt_usb_video_save: bool = config["prompt_usb_video_save"]
+        self.prompt_usb_video_save: bool = config.get("prompt_usb_video_save", True)
+        self.sounds_enabled: bool = config.get("sounds_enabled", True)
+
 

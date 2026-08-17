@@ -56,9 +56,9 @@ class Projector:
         self.process = None
         self.thread = None  # We'll use this to keep track of the playback thread.
         self._orientation = None
-        self.volume = 20  # Boot default: 20%
+        self.volume: int = getattr(config, "default_volume", 20)
         self.video_playing: threading.Event | None = None
-        self.set_volume(20)
+        self.set_volume(self.volume, persist=False)
         # Automatically power on and wake projector on application boot/restart
         threading.Thread(target=self.turn_on_projector, daemon=True).start()
 
@@ -181,10 +181,17 @@ class Projector:
         """Get current HDMI projector audio volume as a percentage (0-100)."""
         return getattr(self, "volume", 20)
 
-    def set_volume(self, volume_percent: int) -> None:
+    def set_volume(self, volume_percent: int, persist: bool = True) -> None:
         """Set HDMI projector audio volume as a percentage (0-100) and remember it."""
         self.volume = max(0, min(100, int(volume_percent)))
         val = self.volume
+        if persist:
+            try:
+                from opencal.utils.config import save_projector_volume
+
+                save_projector_volume(self.volume)
+            except Exception as e:
+                print(f"Error saving volume setting: {e}")
         try:
             subprocess.run(["amixer", "set", "PCM", f"{val}%"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)
             subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{val/100.0:.2f}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)

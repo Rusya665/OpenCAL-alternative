@@ -463,6 +463,15 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
         state = "On" if pc.ui_config.prompt_usb_video_save else "Off"
         gui.splash(f"USB prompt: {state}")
 
+    def _toggle_sounds() -> None:
+        sm = getattr(pc.hardware, "sound_manager", None)
+        new_state = not (sm.is_enabled() if sm else getattr(pc.ui_config, "sounds_enabled", True))
+        if sm:
+            sm.set_enabled(new_state, persist=True)
+        pc.ui_config.sounds_enabled = new_state
+        state_str = "ON" if new_state else "OFF"
+        gui.splash(f"Sounds: {state_str}\nSaved to config", 1.5)
+
     _ALIGNMENT_IMAGE = (
         Path(__file__).parent.parent / "utils" / "calibration" / "alignment_tool.png"
     )
@@ -548,6 +557,7 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
             ],
         ),
         ActionItem("USB video prompt", _toggle_usb_video_prompt),
+        ActionItem("Toggle Sounds", _toggle_sounds),
         PyGameMenu(
             title="Find Vial Width",
             input_q=input_q,

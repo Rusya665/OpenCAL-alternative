@@ -510,10 +510,14 @@ class LCDGui:
     # ── Hardware input handlers ───────────────────────────────────────────────
 
     def handle_rotary_rotation(self, delta: int) -> None:
+        if self.pc.hardware and getattr(self.pc.hardware, "sound_manager", None):
+            self.pc.hardware.sound_manager.play_scroll()
         if self.stack:
             self.stack[-1].on_rotate(delta)
 
     def handle_button_press(self) -> None:
+        if self.pc.hardware and getattr(self.pc.hardware, "sound_manager", None):
+            self.pc.hardware.sound_manager.play_click()
         if self.stack:
             self.stack[-1].on_click()
 
@@ -563,13 +567,17 @@ class LCDGui:
     def restart_pi(self) -> None:
         self.pc.hardware.lcd.clear()
         self.pc.hardware.lcd.write_message("Restarting...", 1, 0)
-        time.sleep(2)
+        if self.pc.hardware and getattr(self.pc.hardware, "sound_manager", None):
+            self.pc.hardware.sound_manager.play_shutdown()
+        time.sleep(1)
         subprocess.run(["sudo", "reboot"])
 
     def power_off_pi(self) -> None:
         self.pc.hardware.lcd.clear()
         self.pc.hardware.lcd.write_message("Powering Off...", 1, 0)
-        time.sleep(2)
+        if self.pc.hardware and getattr(self.pc.hardware, "sound_manager", None):
+            self.pc.hardware.sound_manager.play_shutdown()
+        time.sleep(1)
         self.kill_gui()
         subprocess.call(["sudo", "shutdown", "-h", "now"])
 
@@ -584,6 +592,8 @@ class LCDGui:
 
         if self.pc.hardware.led_manager:
             Thread(target=self.pc.hardware.led_manager.run_start_animation, daemon=True).start()
+        if self.pc.hardware and getattr(self.pc.hardware, "sound_manager", None):
+            self.pc.hardware.sound_manager.play_startup()
         if hasattr(self.pc.hardware.lcd, "render_page"):
             self.pc.hardware.lcd.render_page(["", "OpenCAL".center(20), "FOR THE COMMUNITY".center(20), ""])
             time.sleep(2)
