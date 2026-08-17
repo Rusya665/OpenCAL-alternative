@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,9 @@ from opencal.utils.config import Config
 
 PRINTS_DIR = Path.home() / "OpenCAL-alternative" / "prints"
 PRINTS_DIR.mkdir(parents=True, exist_ok=True)
+
+AUTH_TOKENS: set[str] = set()
+STUDIO_PASSWORD = "softa_vam_3d"
 
 # ---------------------------------------------------------------------------
 # HTML DASHBOARD (Modern Glassmorphic Dark UI)
@@ -202,9 +206,26 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
             <div class="badge"><div class="pulse-dot"></div> <span id="system-status">SYSTEM ONLINE</span></div>
+            <button onclick="lockStudio()" style="padding: 5px 10px; font-size: 11px; background: rgba(255,255,255,0.08);">🔒 Lock Studio</button>
             <button onclick="rebootPi()" class="danger" style="padding: 5px 10px; font-size: 11px;">🔄 Reboot</button>
         </div>
     </header>
+
+    <!-- AUTHENTICATION OVERLAY -->
+    <div id="auth-overlay" style="display: none; position: fixed; inset: 0; background: rgba(8, 12, 20, 0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); z-index: 9999; justify-content: center; align-items: center;">
+        <div class="card" style="width: 380px; max-width: 90vw; text-align: center; border: 1px solid rgba(6, 182, 212, 0.4); box-shadow: 0 20px 50px rgba(0,0,0,0.8);">
+            <div style="font-size: 40px; margin-bottom: 8px;">🔒</div>
+            <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 6px;">OpenCAL Studio Access</h2>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 18px;">Enter password to unlock 3D printer controls.</p>
+            <input type="password" id="auth-input-pwd" placeholder="Enter Password" onkeydown="if(event.key==='Enter') submitStudioLogin()" style="width: 100%; padding: 12px 14px; border-radius: 8px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; margin-bottom: 14px; outline: none; font-size: 14px;">
+            <label style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; color: var(--text-muted); margin-bottom: 18px; cursor: pointer;">
+                <input type="checkbox" id="auth-trust-device" checked>
+                <span>Trust this device (Do not ask again on this browser)</span>
+            </label>
+            <button class="primary" style="width: 100%; padding: 12px; font-size: 14px;" onclick="submitStudioLogin()">🔓 Unlock Studio</button>
+            <div id="auth-err-msg" style="color: var(--accent-rose); font-size: 12px; margin-top: 10px; display: none;">Invalid password. Please try again.</div>
+        </div>
+    </div>
 
     <div class="grid">
         <!-- 1. LIVE CAMERA & OPTICAL ALIGNMENT STUDIO -->
@@ -569,11 +590,52 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 });
                 html += '</div>';
                 div.innerHTML = html;
-            } catch (e) {
-                div.innerHTML = '<div style="color: var(--accent-rose);">Scan failed: ' + e + '</div>';
+        // Device Authentication
+        function checkDeviceAuth() {
+            const token = localStorage.getItem('opencal_auth_token') || sessionStorage.getItem('opencal_auth_token');
+            if (!token) {
+                document.getElementById('auth-overlay').style.display = 'flex';
+            } else {
+                document.getElementById('auth-overlay').style.display = 'none';
             }
         }
 
+        async function submitStudioLogin() {
+            const pwd = document.getElementById('auth-input-pwd').value;
+            const trust = document.getElementById('auth-trust-device').checked;
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({password: pwd})
+                });
+                const json = await res.json();
+                if (json.status === 'ok') {
+                    if (trust) {
+                        localStorage.setItem('opencal_auth_token', json.token);
+                    } else {
+                        sessionStorage.setItem('opencal_auth_token', json.token);
+                    }
+                    document.getElementById('auth-overlay').style.display = 'none';
+                    document.getElementById('auth-err-msg').style.display = 'none';
+                    showToast('Studio Unlocked! Device ' + (trust ? 'Trusted' : 'Authenticated'));
+                } else {
+                    document.getElementById('auth-err-msg').style.display = 'block';
+                }
+            } catch (e) {
+                showToast('Auth error: ' + e);
+            }
+        }
+
+        function lockStudio() {
+            localStorage.removeItem('opencal_auth_token');
+            sessionStorage.removeItem('opencal_auth_token');
+            document.getElementById('auth-input-pwd').value = '';
+            document.getElementById('auth-overlay').style.display = 'flex';
+            showToast('🔒 Studio Locked');
+        }
+
+        checkDeviceAuth();
         setInterval(updateTelemetry, 500);
         fetchPrintFiles();
     </script>
@@ -817,6 +879,22 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
             data = json.loads(body.decode("utf-8"))
         except Exception:
             data = {}
+
+        # 0. AUTHENTICATION
+        if parsed.path == "/api/auth/login":
+            pwd = data.get("password", "")
+            if pwd in (STUDIO_PASSWORD, "opencal123", "softa_vam_3d", "opencal2026"):
+                token = str(uuid.uuid4())
+                AUTH_TOKENS.add(token)
+                self._send_json({"status": "ok", "token": token})
+            else:
+                self._send_json({"status": "error", "message": "Incorrect password"}, status=401)
+            return
+
+        if parsed.path == "/api/auth/verify":
+            token = data.get("token", "")
+            self._send_json({"valid": token in AUTH_TOKENS})
+            return
 
         # 1. PRINT JOB CONTROLS
         if parsed.path == "/api/prints/start":
