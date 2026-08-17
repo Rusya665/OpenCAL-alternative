@@ -65,8 +65,10 @@ class NewhavenLCDBackend:
 
     def render_frame(self, line0: str = "", line1: str = "", line2: str = "", line3: str = ""):
         """
-        Pads 4 lines to 20 chars and writes 80 bytes in HD44780 sequential order:
-        Line 0 (0x00) -> Line 2 (0x14) -> Line 1 (0x40) -> Line 3 (0x54)
+        Exact 128-byte Circular DDRAM Stream:
+        Row 0 (20) -> Row 2 (20) -> Gap (24) -> Row 1 (20) -> Row 3 (20) -> Gap (24) = 128 bytes
+        Because total HD44780 DDRAM is 128 bytes (0x00-0x7F), writing 128 bytes
+        guarantees the hardware Address Counter wraps back to 0x00 every frame with zero drift.
         """
         if not self.bus:
             return
@@ -74,12 +76,11 @@ class NewhavenLCDBackend:
         l1 = line1.ljust(20)[:20]
         l2 = line2.ljust(20)[:20]
         l3 = line3.ljust(20)[:20]
-        payload = (l0 + l2 + l1 + l3).encode("latin-1", errors="replace")
+        gap = " " * 24
+        payload = (l0 + l2 + gap + l1 + l3 + gap).encode("latin-1", errors="replace")
 
         with self._lock:
             try:
-                # Reset cursor position to Line 0 Col 0 before writing 80 characters
-                self._send_cmd([0xFE, 0x45, 0x00], delay=0.010)
                 for char_byte in payload:
                     msg = i2c_msg.write(self.address, [char_byte])
                     self.bus.i2c_rdwr(msg)
