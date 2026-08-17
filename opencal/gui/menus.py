@@ -464,22 +464,42 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
 
     _vial_px = [200]  # mutable container shared between vial mode callback and LCD render
 
+    def _make_experimental_items() -> list[MenuBase]:
+        exp_dir = Path.home() / "OpenCAL-alternative" / "experimental"
+        oh_hai = exp_dir / "oh_hai_mark.mp4"
+        rick = exp_dir / "rick_astley.mp4"
+
+        def _play(path: Path, name: str):
+            if not path.exists():
+                gui.splash(f"File missing:\n{name[:14]}", 1.5)
+                return
+            gui.splash(f"Playing:\n{name[:14]}", 1.5)
+            if pc.hardware and pc.hardware.projector:
+                pc.hardware.projector.play_experimental_video(path)
+
+        def _stop():
+            if pc.hardware and pc.hardware.projector:
+                pc.hardware.projector.stop_video()
+            gui.splash("Playback Stopped", 1.0)
+
+        return [
+            ActionItem("Play Oh Hai Mark", lambda: _play(oh_hai, "Oh Hai Mark")),
+            ActionItem("Play Rick Astley", lambda: _play(rick, "Rick Astley")),
+            ActionItem("Stop Video", _stop),
+            VariableMenu(
+                title="Projector Volume",
+                get=lambda: pc.hardware.projector.get_volume() if (pc.hardware and pc.hardware.projector) else 20,
+                set=lambda v: pc.hardware.projector.set_volume(int(v)) if (pc.hardware and pc.hardware.projector) else None,
+                min_val=0,
+                max_val=100,
+                step=5,
+            ),
+        ]
+
     settings_items: list[MenuBase] = [
-        # ActionItem("save as default", lambda: gui.save_defaults()),  # disabled
-        # VariableMenu(                                                 # disabled
-        #     title="Resize Print",
-        #     get=lambda: pc.hardware.projector.size,
-        #     set=lambda v: pc.hardware.projector.resize(int(v)),
-        #     min_val=1, max_val=100, step=1,
-        # ),
-        # VariableMenu(                                                 # disabled
-        #     title="Set Stepper RPM",
-        #     get=lambda: pc.hardware.stepper.speed_rpm,
-        #     set=lambda v: pc.hardware.stepper.set_rpm(v, ramp_time=1),
-        #     min_val=1, max_val=60, step=1,
-        # ),
         NetworkInfoMenu(),
         DynamicNavigationMenu("Select Wi-Fi", refresh=lambda: _make_wifi_select_items(gui)),
+        DynamicNavigationMenu("EXPERIMENTAL", refresh=_make_experimental_items),
         DynamicNavigationMenu("Calibration Images", refresh=_make_calib_items),
         PyGameMenu(
             title="Show Alignment",

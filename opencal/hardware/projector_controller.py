@@ -160,6 +160,45 @@ class Projector:
         """Set print size scaling as a percent"""
         self.size = size_new
 
+    def get_volume(self) -> int:
+        """Get current HDMI projector audio volume as a percentage (0-100)."""
+        try:
+            out = subprocess.check_output(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], timeout=1.0, text=True)
+            parts = out.strip().split()
+            if len(parts) >= 2:
+                return int(round(float(parts[1]) * 100))
+        except Exception:
+            pass
+        return 20
+
+    def set_volume(self, volume_percent: int) -> None:
+        """Set HDMI projector audio volume as a percentage (0-100)."""
+        val = max(0, min(100, volume_percent)) / 100.0
+        try:
+            subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{val:.2f}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)
+        except Exception as e:
+            print(f"Error setting volume: {e}")
+
+    def play_experimental_video(self, video_path: Path, volume: int = 20):
+        """Play an experimental video fullscreen on the projector with audio enabled."""
+        if self.process:
+            self.stop_video()
+
+        self.set_volume(volume)
+
+        env = os.environ.copy()
+        env["DISPLAY"] = ":0"
+
+        command = [
+            "/usr/bin/cvlc",
+            "--fullscreen",
+            "--no-video-title-show",
+            "--play-and-exit",
+            str(video_path),
+        ]
+        self.process = subprocess.Popen(command, env=env)
+        print(f"Playing experimental video: {video_path} at volume {volume}%")
+
     def stop_video(self):
         """
         Stop the video playback by terminating the cvlc process.

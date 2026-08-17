@@ -400,6 +400,26 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             </div>
             <div id="wifi-scan-results" style="margin-top: 10px; display: none; font-size: 12px;"></div>
         </div>
+
+        <!-- 7. EXPERIMENTAL PROJECTOR & AUDIO CONTROLS -->
+        <div class="card">
+            <div class="card-title">
+                <span>🎬 Experimental Projector & Audio Player</span>
+                <span style="font-size: 12px; color: var(--accent-purple);">HDMI Media</span>
+            </div>
+            
+            <div class="slider-group" style="margin-bottom: 16px;">
+                <label>Projector Speaker Volume:</label>
+                <input type="range" id="proj-vol-slider" min="0" max="100" value="20" oninput="setProjectorVolume(this.value)">
+                <span class="slider-val" id="proj-vol-val">20%</span>
+            </div>
+
+            <div class="btn-group">
+                <button class="primary" onclick="playExpVideo('oh_hai_mark.mp4')">▶ Play: Oh Hai Mark</button>
+                <button class="primary" onclick="playExpVideo('rick_astley.mp4')">🕺 Play: Never Gonna Give You Up</button>
+                <button class="danger" onclick="stopExpVideo()">⏹ Stop Playback</button>
+            </div>
+        </div>
     </div>
 
     <div id="toast">Command Executed</div>
@@ -535,6 +555,19 @@ HTML_DASHBOARD = """<!DOCTYPE html>
 
         function rebootPi() {
             if (confirm('Reboot Raspberry Pi system?')) postAPI('/api/system/reboot');
+        }
+
+        // Experimental Projector & Audio
+        function setProjectorVolume(val) {
+            document.getElementById('proj-vol-val').innerText = val + '%';
+            postAPI('/api/experimental/volume', {volume: parseInt(val)});
+        }
+        function playExpVideo(filename) {
+            const vol = parseInt(document.getElementById('proj-vol-slider').value);
+            postAPI('/api/experimental/play', {video: filename, volume: vol});
+        }
+        function stopExpVideo() {
+            postAPI('/api/experimental/stop');
         }
 
         // Telemetry Polling (every 500ms)
@@ -1052,7 +1085,39 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(e)}, status=500)
             return
 
-        # 6. SYSTEM CONTROLS
+        # 6. EXPERIMENTAL PROJECTOR & AUDIO
+        if parsed.path == "/api/experimental/play":
+            try:
+                vid_name = data.get("video", "oh_hai_mark.mp4")
+                vol = int(data.get("volume", 20))
+                vid_path = Path.home() / "OpenCAL-alternative" / "experimental" / vid_name
+                if self.hardware and self.hardware.projector:
+                    self.hardware.projector.play_experimental_video(vid_path, volume=vol)
+                self._send_json({"message": f"Playing {vid_name} at {vol}% volume!"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/experimental/stop":
+            try:
+                if self.hardware and self.hardware.projector:
+                    self.hardware.projector.stop_video()
+                self._send_json({"message": "Projector playback stopped."})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/experimental/volume":
+            try:
+                vol = int(data.get("volume", 20))
+                if self.hardware and self.hardware.projector:
+                    self.hardware.projector.set_volume(vol)
+                self._send_json({"message": f"Volume set to {vol}%"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        # 7. SYSTEM CONTROLS
         if parsed.path == "/api/system/reboot":
             threading.Thread(target=lambda: (time.sleep(1), subprocess.run(["sudo", "reboot"])), daemon=True).start()
             self._send_json({"message": "Rebooting system in 1 second..."})
