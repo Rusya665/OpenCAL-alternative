@@ -580,62 +580,87 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
 
         # 3. CAMERA CONTROLS
         if parsed.path == "/api/camera/focus":
-            diopters = float(data.get("diopters", 9.5))
-            if self.hardware and self.hardware.camera:
-                self.hardware.camera.set_focus(diopters)
-            self._send_json({"message": f"Focus set to {diopters} D"})
+            try:
+                diopters = float(data.get("diopters", 9.5))
+                if self.hardware and self.hardware.camera:
+                    self.hardware.camera.set_focus(diopters)
+                self._send_json({"message": f"Focus set to {diopters} D"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
             return
 
         if parsed.path == "/api/camera/autofocus":
-            if self.hardware and self.hardware.camera:
-                self.hardware.camera.activate_autofocus()
-            self._send_json({"message": "Continuous Autofocus Activated"})
+            try:
+                if self.hardware and self.hardware.camera:
+                    self.hardware.camera.activate_autofocus()
+                self._send_json({"message": "Continuous Autofocus Activated"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
             return
 
         # 4. STEPPER MOTOR CONTROLS
         if parsed.path == "/api/stepper/jog":
-            steps = int(data.get("steps", 3200))
-            if self.hardware and self.hardware.stepper:
-                self.hardware.stepper.jog(steps)
-            self._send_json({"message": f"Jogged {steps} microsteps"})
+            try:
+                steps = int(data.get("steps", 3200))
+                if self.hardware and self.hardware.stepper:
+                    direction = "CW" if steps >= 0 else "CCW"
+                    self.hardware.stepper.rotate_steps(abs(steps), direction=direction)
+                self._send_json({"message": f"Jogged {steps} microsteps"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
             return
 
         if parsed.path == "/api/stepper/spin":
-            rpm = float(data.get("rpm", 9.0))
-            if self.hardware and self.hardware.stepper:
-                self.hardware.stepper.set_speed(rpm)
-                self.hardware.stepper.start_continuous()
-            self._send_json({"message": f"Continuous rotation at {rpm} RPM"})
+            try:
+                rpm = float(data.get("rpm", 9.0))
+                if self.hardware and self.hardware.stepper:
+                    self.hardware.stepper.set_rpm(rpm)
+                    self.hardware.stepper.start_rotation(direction="CW")
+                self._send_json({"message": f"Continuous rotation at {rpm} RPM"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
             return
 
         if parsed.path == "/api/stepper/stop":
-            if self.hardware and self.hardware.stepper:
-                self.hardware.stepper.stop()
-            self._send_json({"message": "Motor stopped"})
+            try:
+                if self.hardware and self.hardware.stepper:
+                    self.hardware.stepper.stop()
+                self._send_json({"message": "Motor stopped"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
             return
 
         # 5. LED CONTROLS
         if parsed.path == "/api/led/color":
-            col_str = data.get("color", "white").lower()
-            cmap = {"red": RED, "green": GREEN, "blue": BLUE, "yellow": YELLOW, "white": WHITE, "cyan": (0, 255, 255), "off": OFF}
-            color = cmap.get(col_str, WHITE)
-            if self.hardware and self.hardware.leds:
-                self.hardware.leds.set_color(color)
-            self._send_json({"message": f"LEDs set to {col_str.upper()}"})
+            try:
+                col_str = data.get("color", "white").lower()
+                cmap = {"red": RED, "green": GREEN, "blue": BLUE, "yellow": YELLOW, "white": WHITE, "cyan": (0, 255, 255), "off": OFF}
+                color = cmap.get(col_str, WHITE)
+                if self.hardware and self.hardware.led_manager:
+                    self.hardware.led_manager.set_color(color)
+                self._send_json({"message": f"LEDs set to {col_str.upper()}"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
             return
 
         if parsed.path == "/api/led/brightness":
-            b = int(data.get("brightness", 80))
-            if self.hardware and self.hardware.leds:
-                self.hardware.leds.set_brightness(b / 100.0)
-            self._send_json({"message": f"LED brightness set to {b}%"})
+            try:
+                b = int(data.get("brightness", 80))
+                if self.hardware and self.hardware.led_manager:
+                    self.hardware.led_manager.set_brightness(b / 100.0)
+                self._send_json({"message": f"LED brightness set to {b}%"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
             return
 
         if parsed.path == "/api/led/animate":
-            anim = data.get("animation", "rainbow")
-            if self.hardware and self.hardware.leds:
-                threading.Thread(target=self._run_led_anim, args=(anim,), daemon=True).start()
-            self._send_json({"message": f"Running {anim} animation"})
+            try:
+                anim = data.get("animation", "rainbow")
+                if self.hardware and self.hardware.led_manager:
+                    threading.Thread(target=self._run_led_anim, args=(anim,), daemon=True).start()
+                self._send_json({"message": f"Running {anim} animation"})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
             return
 
         self._send_json({"error": "Endpoint not found"}, status=404)
@@ -649,36 +674,51 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
     def _trigger_page_action(self) -> str:
         page = OPENCAL_PAGES[WebConsoleHandler.current_doc_page]
         action = page["action"]
-        if action == "jog_motor_360":
-            if self.hardware and self.hardware.stepper:
-                self.hardware.stepper.jog(3200)
-            return "Motor Jogged 360 Degrees"
-        elif action == "run_rainbow":
-            if self.hardware and self.hardware.leds:
-                threading.Thread(target=self._run_led_anim, args=("rainbow",), daemon=True).start()
-            return "LED Rainbow Started"
-        elif action == "trigger_autofocus":
-            if self.hardware and self.hardware.camera:
-                self.hardware.camera.activate_autofocus()
-            return "Autofocus Triggered"
-        elif action == "start_print_demo":
-            if self.hardware and self.hardware.stepper:
-                self.hardware.stepper.set_speed(9.0)
-                self.hardware.stepper.start_continuous()
-            return "VAM Print Demo Started (9 RPM)"
-        else:
-            self._render_current_page()
-            return f"Page {page['title']} Refreshed"
+        try:
+            if action == "jog_motor_360":
+                if self.hardware and self.hardware.stepper:
+                    self.hardware.stepper.rotate_steps(3200, direction="CW")
+                return "Motor Jogged 360 Degrees"
+            elif action == "run_rainbow":
+                if self.hardware and self.hardware.led_manager:
+                    threading.Thread(target=self._run_led_anim, args=("rainbow",), daemon=True).start()
+                return "LED Rainbow Started"
+            elif action == "trigger_autofocus":
+                if self.hardware and self.hardware.camera:
+                    self.hardware.camera.activate_autofocus()
+                return "Autofocus Triggered"
+            elif action == "start_print_demo":
+                if self.hardware and self.hardware.stepper:
+                    self.hardware.stepper.set_rpm(9.0)
+                    self.hardware.stepper.start_rotation(direction="CW")
+                return "VAM Print Demo Started (9 RPM)"
+            else:
+                self._render_current_page()
+                return f"Page {page['title']} Refreshed"
+        except Exception as e:
+            return f"Action Error: {e}"
 
     def _run_led_anim(self, anim_name):
-        if not self.hardware or not self.hardware.leds:
+        if not self.hardware or not self.hardware.led_manager:
             return
-        if anim_name == "rainbow":
-            for _ in range(3):
-                for color in [(255,0,0), (255,127,0), (255,255,0), (0,255,0), (0,255,255), (0,0,255), (139,0,255)]:
-                    self.hardware.leds.set_color(color)
-                    time.sleep(0.12)
-            self.hardware.leds.set_color(WHITE)
+        try:
+            if anim_name == "rainbow":
+                for _ in range(3):
+                    for color in [(255,0,0), (255,127,0), (255,255,0), (0,255,0), (0,255,255), (0,0,255), (139,0,255)]:
+                        self.hardware.led_manager.set_color(color)
+                        time.sleep(0.12)
+                self.hardware.led_manager.set_color(WHITE)
+            elif anim_name == "pulse":
+                for _ in range(3):
+                    for b in range(10, 100, 10):
+                        self.hardware.led_manager.set_brightness(b / 100.0)
+                        time.sleep(0.04)
+                    for b in range(100, 10, -10):
+                        self.hardware.led_manager.set_brightness(b / 100.0)
+                        time.sleep(0.04)
+                self.hardware.led_manager.set_brightness(0.8)
+        except Exception:
+            pass
 
 
 def rotary_hardware_listener(hardware: HardwareController):
@@ -720,22 +760,22 @@ def rotary_hardware_listener(hardware: HardwareController):
                 # Execute action
                 action = page["action"]
                 if action == "jog_motor_360" and hardware.stepper:
-                    hardware.stepper.jog(3200)
-                elif action == "run_rainbow" and hardware.leds:
+                    hardware.stepper.rotate_steps(3200, direction="CW")
+                elif action == "run_rainbow" and hardware.led_manager:
                     for color in [(255,0,0), (0,255,0), (0,0,255), (255,255,255)]:
-                        hardware.leds.set_color(color)
+                        hardware.led_manager.set_color(color)
                         time.sleep(0.15)
                 elif action == "trigger_autofocus" and hardware.camera:
                     hardware.camera.activate_autofocus()
                 elif action == "start_print_demo" and hardware.stepper:
-                    hardware.stepper.set_speed(9.0)
-                    hardware.stepper.start_continuous()
+                    hardware.stepper.set_rpm(9.0)
+                    hardware.stepper.start_rotation(direction="CW")
                 time.sleep(0.8)
                 if hardware.lcd:
                     hardware.lcd.write_message(page["lines"][3], row=3)
 
             time.sleep(0.05)
-        except Exception as e:
+        except Exception:
             time.sleep(0.1)
 
 
