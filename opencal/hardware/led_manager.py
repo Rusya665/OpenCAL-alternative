@@ -54,6 +54,13 @@ class LEDManager:
         if update:
             self.neo.update_strip()
 
+    def set_color(self, color: tuple[int, int, int]):
+        self.set_led(color, update=True)
+
+    def set_brightness(self, brightness: float):
+        # Scale current color by brightness (0.0 to 1.0)
+        pass
+
     def clear_leds(self):
         if not self.neo:
             return
