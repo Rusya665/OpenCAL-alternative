@@ -99,26 +99,42 @@ HTML_LAB = """<!DOCTYPE html>
             <div>
                 <!-- 1. Quick Official Commands -->
                 <div class="card" style="margin-bottom: 20px;">
-                    <div class="card-title">⚡ 1. Official Standard Commands (0xFE Prefix)</div>
+                    <div class="card-title">⚡ 1. Test Clear Commands & Wipes</div>
                     <div class="btn-grid">
-                        <button class="danger" onclick="sendQuick([0xFE, 0x51], 'Clear Screen (0xFE 0x51)', 50)">🧹 Clear (51)</button>
-                        <button class="primary" onclick="sendQuick([0xFE, 0x41], 'Display ON (0xFE 0x41)', 10)">💡 Display ON (41)</button>
-                        <button onclick="sendQuick([0xFE, 0x42], 'Display OFF (0xFE 0x42)', 10)">🌑 Display OFF (42)</button>
-                        <button onclick="sendQuick([0xFE, 0x46], 'Cursor Home (0xFE 0x46)', 20)">🏠 Home (46)</button>
+                        <button class="danger" onclick="sendQuick([0xFE, 0x14], 'Clear V3 (0xFE 0x14)', 50)">🧹 Clear (FE 14)</button>
+                        <button class="danger" onclick="sendQuick([0xFE, 0x51], 'Clear Legacy (0xFE 0x51)', 50)">🧹 Clear (FE 51)</button>
+                        <button class="danger" onclick="sendQuick([0xFE, 0x01], 'Clear Raw (0xFE 0x01)', 50)">🧹 Clear (FE 01)</button>
+                        <button class="warning" onclick="sendSpacesWipe()">🧽 Wipe 80 Spaces</button>
                     </div>
-                    <div class="card-title" style="font-size: 13px; color: var(--text-muted); margin-top: 10px;">Row Cursor Positions:</div>
+
+                    <div class="card-title" style="font-size: 13px; color: var(--text-muted); margin-top: 10px;">Display ON / Home Commands:</div>
                     <div class="btn-grid">
-                        <button onclick="sendQuick([0xFE, 0x45, 0x00], 'Set Row 0 (0xFE 0x45 0x00)', 5)">📍 Row 0 (0x00)</button>
-                        <button onclick="sendQuick([0xFE, 0x45, 0x40], 'Set Row 1 (0xFE 0x45 0x40)', 5)">📍 Row 1 (0x40)</button>
-                        <button onclick="sendQuick([0xFE, 0x45, 0x14], 'Set Row 2 (0xFE 0x45 0x14)', 5)">📍 Row 2 (0x14)</button>
-                        <button onclick="sendQuick([0xFE, 0x45, 0x54], 'Set Row 3 (0xFE 0x45 0x54)', 5)">📍 Row 3 (0x54)</button>
+                        <button class="primary" onclick="sendQuick([0xFE, 0x41], 'Display ON (0xFE 0x41)', 10)">💡 ON (FE 41)</button>
+                        <button class="primary" onclick="sendQuick([0xFE, 0x0C], 'ON/NoCursor (0xFE 0x0C)', 10)">💡 ON (FE 0C)</button>
+                        <button onclick="sendQuick([0xFE, 0x46], 'Cursor Home (0xFE 0x46)', 20)">🏠 Home (FE 46)</button>
+                        <button onclick="sendQuick([0xFE, 0x02], 'Home Raw (0xFE 0x02)', 20)">🏠 Home (FE 02)</button>
                     </div>
+
+                    <div class="card-title" style="font-size: 13px; color: var(--text-muted); margin-top: 10px;">Cursor Row Positioning Variations:</div>
+                    <div class="btn-grid">
+                        <button onclick="sendQuick([0xFE, 0x45, 0x00], 'FE 45 00 (Row 0)', 5)">📍 FE 45 00 (R0)</button>
+                        <button onclick="sendQuick([0xFE, 0x45, 0x40], 'FE 45 40 (Row 1)', 5)">📍 FE 45 40 (R1)</button>
+                        <button onclick="sendQuick([0xFE, 0x45, 0x14], 'FE 45 14 (Row 2)', 5)">📍 FE 45 14 (R2)</button>
+                        <button onclick="sendQuick([0xFE, 0x45, 0x54], 'FE 45 54 (Row 3)', 5)">📍 FE 45 54 (R3)</button>
+                    </div>
+                    <div class="btn-grid" style="margin-top: 6px;">
+                        <button onclick="sendQuick([0xFE, 0x80], 'Raw DDRAM 0x80 (Row 0)', 5)">🎯 FE 80 (R0)</button>
+                        <button onclick="sendQuick([0xFE, 0xC0], 'Raw DDRAM 0xC0 (Row 1)', 5)">🎯 FE C0 (R1)</button>
+                        <button onclick="sendQuick([0xFE, 0x94], 'Raw DDRAM 0x94 (Row 2)', 5)">🎯 FE 94 (R2)</button>
+                        <button onclick="sendQuick([0xFE, 0xD4], 'Raw DDRAM 0xD4 (Row 3)', 5)">🎯 FE D4 (R3)</button>
+                    </div>
+
                     <div class="card-title" style="font-size: 13px; color: var(--text-muted); margin-top: 10px;">Contrast & Backlight:</div>
                     <div class="btn-grid">
-                        <button onclick="sendQuick([0xFE, 0x52, 40], 'Contrast 40 (0xFE 0x52 0x28)', 10)">🎚️ Contrast 40</button>
-                        <button onclick="sendQuick([0xFE, 0x52, 50], 'Contrast 50 Max (0xFE 0x52 0x32)', 10)">🎚️ Contrast 50</button>
-                        <button onclick="sendQuick([0xFE, 0x53, 8], 'Backlight Max 8 (0xFE 0x53 0x08)', 10)">☀️ Brightness 8</button>
-                        <button onclick="sendQuick([0xFE, 0x53, 2], 'Backlight Low 2 (0xFE 0x53 0x02)', 10)">🔅 Brightness 2</button>
+                        <button onclick="sendQuick([0xFE, 0x52, 40], 'Contrast 40', 10)">🎚️ Contrast 40</button>
+                        <button onclick="sendQuick([0xFE, 0x52, 50], 'Contrast 50', 10)">🎚️ Contrast 50</button>
+                        <button onclick="sendQuick([0xFE, 0x53, 8], 'Brightness 8', 10)">☀️ Brightness 8</button>
+                        <button onclick="sendQuick([0xFE, 0x53, 2], 'Brightness 2', 10)">🔅 Brightness 2</button>
                     </div>
                 </div>
 
@@ -196,10 +212,15 @@ HTML_LAB = """<!DOCTYPE html>
             sendPayload(bytesArr, desc, delay);
         }
 
+        function sendSpacesWipe() {
+            const spaces = Array(80).fill(32); // 80 ASCII spaces (0x20)
+            sendPayload(spaces, 'Wipe 80 Spaces', 20);
+        }
+
         function sendHex() {
             const raw = document.getElementById('hex-input').value.trim();
             if (!raw) return;
-            const parts = raw.split(/[\\s,]+/).filter(x => x.length > 0);
+            const parts = raw.split(/[\s,]+/).filter(x => x.length > 0);
             const bytesArr = parts.map(p => parseInt(p, 16));
             sendPayload(bytesArr, 'Custom Hex: ' + raw, 10);
         }
