@@ -502,6 +502,11 @@ def build_menu_tree(pc: PrintController, gui: "LCDGui") -> NavigationMenu:
             if pc.hardware and pc.hardware.projector:
                 pc.hardware.projector.play_experimental_video(path)
 
+        def _stop():
+            if pc.hardware and pc.hardware.projector:
+                pc.hardware.projector.stop_video()
+            gui.splash("Playback Stopped", 1.0)
+
         def _power_on():
             if pc.hardware and pc.hardware.projector:
                 pc.hardware.projector.turn_on_projector()

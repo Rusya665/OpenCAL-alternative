@@ -510,16 +510,22 @@ class LCDGui:
     # ── Hardware input handlers ───────────────────────────────────────────────
 
     def handle_rotary_rotation(self, delta: int) -> None:
-        if self.pc.hardware and getattr(self.pc.hardware, "sound_manager", None):
-            self.pc.hardware.sound_manager.play_scroll()
-        if self.stack:
-            self.stack[-1].on_rotate(delta)
+        try:
+            if self.pc.hardware and getattr(self.pc.hardware, "sound_manager", None):
+                self.pc.hardware.sound_manager.play_scroll()
+            if self.stack:
+                self.stack[-1].on_rotate(delta)
+        except Exception as e:
+            print(f"Error handling rotary rotation: {e}")
 
     def handle_button_press(self) -> None:
-        if self.pc.hardware and getattr(self.pc.hardware, "sound_manager", None):
-            self.pc.hardware.sound_manager.play_click()
-        if self.stack:
-            self.stack[-1].on_click()
+        try:
+            if self.pc.hardware and getattr(self.pc.hardware, "sound_manager", None):
+                self.pc.hardware.sound_manager.play_click()
+            if self.stack:
+                self.stack[-1].on_click()
+        except Exception as e:
+            print(f"Error handling button press: {e}")
 
 
     # ── Utility methods (called from menu callbacks) ──────────────────────────

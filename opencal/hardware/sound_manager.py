@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import queue
 import subprocess
 import threading
@@ -13,12 +14,17 @@ SHUTDOWN_MP3 = SOUNDS_DIR / "win_xp_shutdown.mp3"
 SCROLL_WAV = SOUNDS_DIR / "doom_scroll.wav"
 CLICK_WAV = SOUNDS_DIR / "doom_click.wav"
 
+AUDIO_ENV = os.environ.copy()
+AUDIO_ENV["XDG_RUNTIME_DIR"] = "/run/user/1000"
+AUDIO_ENV["PULSE_SERVER"] = "unix:/run/user/1000/pulse/native"
+AUDIO_ENV["PIPEWIRE_RUNTIME_DIR"] = "/run/user/1000"
+
 
 @final
 class SoundManager:
     """Manages audio effects, startup/shutdown jingles, and Doom-style menu navigation sounds.
 
-    Uses a dedicated non-blocking worker queue and ALSA/aplay subprocesses to ensure
+    Uses a dedicated non-blocking worker queue and ALSA/PipeWire subprocesses to ensure
     100% thread-safety across GPIO interrupts, web threads, and LCD rendering loops.
     """
 
@@ -39,9 +45,10 @@ class SoundManager:
                     continue
 
                 if sound_file.suffix.lower() == ".wav":
-                    # Instantaneous low-latency ALSA playback for UI ticks
+                    # Instantaneous low-latency playback for UI ticks
                     subprocess.run(
                         ["aplay", "-q", "-N", str(sound_file)],
+                        env=AUDIO_ENV,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         timeout=0.8,
@@ -50,6 +57,7 @@ class SoundManager:
                     # MP3 playback for startup/shutdown jingles
                     subprocess.run(
                         ["mpv", "--no-video", "--really-quiet", str(sound_file)],
+                        env=AUDIO_ENV,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         timeout=6.0,
@@ -107,6 +115,7 @@ class SoundManager:
         try:
             subprocess.run(
                 ["mpv", "--no-video", "--really-quiet", str(SHUTDOWN_MP3)],
+                env=AUDIO_ENV,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 timeout=4.0,
