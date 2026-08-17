@@ -25,7 +25,7 @@ def main():
 
     # Launch Web Console concurrently on Port 5000 sharing the same hardware
     try:
-        start_web_console_thread(pc.hardware, port=5000)
+        start_web_console_thread(pc, port=5000)
     except Exception as e:
         print(f"Warning: Could not start background Web Console: {e}")
 
