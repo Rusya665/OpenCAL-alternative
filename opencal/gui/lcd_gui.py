@@ -541,14 +541,24 @@ class LCDGui:
 
         self.splash("Defaults saved!", 1.2)
 
-    def splash(self, message: str, duration: float = 1.0) -> None:
-        """Briefly show a centered message on the LCD, then force a redraw."""
+    def splash(self, message: str, duration: float = 1.0, delay_seconds: float = 1.0) -> None:
+        """Briefly show a message on the LCD, then force a redraw."""
+        dur = duration if duration != 1.0 else delay_seconds
         self._splash_active = True
-        self.pc.hardware.lcd.clear()
-        self.pc.hardware.lcd.write_message(message.center(20), 1, 0)
-        time.sleep(duration)
-        self._splash_active = False
-        self._last_rendered = []  # force full redraw on next loop tick
+        try:
+            self.pc.hardware.lcd.clear()
+            lines = message.splitlines()
+            if len(lines) == 1:
+                self.pc.hardware.lcd.write_message(lines[0].center(20), 1, 0)
+            else:
+                for r_idx, line_text in enumerate(lines[:4]):
+                    self.pc.hardware.lcd.write_message(line_text.center(20), r_idx, 0)
+            time.sleep(dur)
+        except Exception:
+            pass
+        finally:
+            self._splash_active = False
+            self._last_rendered = []  # force full redraw on next loop tick
 
     def restart_pi(self) -> None:
         self.pc.hardware.lcd.clear()

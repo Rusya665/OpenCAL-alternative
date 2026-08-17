@@ -359,7 +359,7 @@ class NetworkInfoMenu(MenuBase):
         ]
 
 def _switch_wifi_async(con_name: str, gui: "LCDGui") -> None:
-    gui.splash(f"Connecting...\n{con_name[:14]}", delay_seconds=2.0)
+    gui.splash(f"Connecting to:\n{con_name[:14]}", 1.5)
 
     def _worker():
         import subprocess
@@ -368,14 +368,14 @@ def _switch_wifi_async(con_name: str, gui: "LCDGui") -> None:
                 ["sudo", "nmcli", "connection", "up", con_name],
                 capture_output=True,
                 text=True,
-                timeout=15,
+                timeout=12,
             )
             if res.returncode == 0:
-                gui.splash(f"Connected:\n{con_name[:14]}", delay_seconds=2.0)
+                gui.splash(f"Connected to:\n{con_name[:14]}", 1.5)
             else:
-                gui.splash(f"Connect failed:\n{con_name[:14]}", delay_seconds=2.0)
+                gui.splash(f"Failed to join:\n{con_name[:14]}", 1.5)
         except Exception as e:
-            gui.splash(f"Error:\n{str(e)[:14]}", delay_seconds=2.0)
+            gui.splash(f"Connect error:\n{str(e)[:14]}", 1.5)
 
     threading.Thread(target=_worker, daemon=True).start()
 

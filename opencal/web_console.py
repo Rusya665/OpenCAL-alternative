@@ -770,7 +770,11 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/wifi/scan":
             networks = []
             try:
-                out = subprocess.check_output(["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list"], text=True)
+                out = subprocess.check_output(
+                    ["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list", "--rescan", "yes"],
+                    timeout=8.0,
+                    text=True,
+                )
                 seen = set()
                 for line in out.strip().splitlines():
                     parts = line.split(":")
