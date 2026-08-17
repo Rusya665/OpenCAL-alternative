@@ -328,21 +328,34 @@ class NetworkInfoMenu(MenuBase):
             try:
                 out = subprocess.check_output(["hostname", "-I"], timeout=2.0, text=True)
                 ips = out.strip().split()
-                if ips:
-                    local_ip = ips[0]
+                for ip in ips:
+                    if not ip.startswith("100."):
+                        local_ip = ip
+                        break
+            except Exception:
+                pass
+
+            ts_ip = "Offline"
+            try:
+                out = subprocess.check_output(["tailscale", "ip", "-4"], timeout=2.0, text=True)
+                ts = out.strip()
+                if ts:
+                    ts_ip = ts
             except Exception:
                 pass
 
             self._cached_ssid = ssid
             self._cached_ip = local_ip
+            self._cached_ts = ts_ip
             self._stop_event.wait(3.0)
 
     def render(self) -> list[str]:
+        ts_display = getattr(self, "_cached_ts", "Offline")
         return [
             "-- NETWORK INFO --".center(20),
             f"SSID: {self._cached_ssid[:14]}".ljust(20),
             f"IP: {self._cached_ip[:16]}".ljust(20),
-            "Port: 5000 (Online) ".ljust(20),
+            f"TS: {ts_display[:16]}".ljust(20),
         ]
 
 
