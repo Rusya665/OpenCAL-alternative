@@ -25,6 +25,9 @@ class LEDManager:
         self.num_led: int = config.num_led
         self.default_color: tuple[int, int, int] = (0, 255, 0)
 
+        self.current_color: tuple[int, int, int] = (255, 255, 255)
+        self.current_brightness: float = 0.8
+
         if HAS_PI5NEO:
             try:
                 self.neo = Pi5Neo("/dev/spidev0.0", self.num_led, 800, pixel_type=EPixelType.GRB)
@@ -44,8 +47,13 @@ class LEDManager:
     ):
         if not self.neo:
             return
-        # Extract RGB components
-        rgb = color[:3]
+        self.current_color = color[:3]
+        # Apply current brightness scaling
+        r = int(self.current_color[0] * self.current_brightness)
+        g = int(self.current_color[1] * self.current_brightness)
+        b = int(self.current_color[2] * self.current_brightness)
+        rgb = (r, g, b)
+
         if led_index is None:
             self.neo.fill_strip(*rgb)
         else:
@@ -58,8 +66,8 @@ class LEDManager:
         self.set_led(color, update=True)
 
     def set_brightness(self, brightness: float):
-        # Scale current color by brightness (0.0 to 1.0)
-        pass
+        self.current_brightness = max(0.0, min(1.0, float(brightness)))
+        self.set_led(self.current_color, update=True)
 
     def clear_leds(self):
         if not self.neo:
