@@ -78,6 +78,8 @@ class NewhavenLCDBackend:
 
         with self._lock:
             try:
+                # Reset cursor position to Line 0 Col 0 before writing 80 characters
+                self._send_cmd([0xFE, 0x45, 0x00], delay=0.010)
                 for char_byte in payload:
                     msg = i2c_msg.write(self.address, [char_byte])
                     self.bus.i2c_rdwr(msg)
