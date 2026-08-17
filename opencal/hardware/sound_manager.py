@@ -24,13 +24,13 @@ AUDIO_ENV["PIPEWIRE_RUNTIME_DIR"] = "/run/user/1000"
 class SoundManager:
     """Manages audio effects, startup/shutdown jingles, and Doom-style menu navigation sounds.
 
-    Directly interfaces with the PipeWire audio engine via pw-play to ensure non-blocking,
-    multi-stream mixed playback through HDMI to the Optoma projector.
+    Features intelligent rate limiting, instant queue clearing on click, and PipeWire streaming.
     """
 
     def __init__(self, sounds_enabled: bool = True) -> None:
         self.sounds_enabled: bool = sounds_enabled
-        self._queue: queue.Queue[Path | None] = queue.Queue(maxsize=16)
+        self._queue: queue.Queue[Path | None] = queue.Queue(maxsize=4)
+        self._last_scroll_time: float = 0.0
         self._worker_thread = threading.Thread(target=self._audio_worker, daemon=True)
         self._worker_thread.start()
 
@@ -96,18 +96,29 @@ class SoundManager:
         return self.sounds_enabled
 
     def play_scroll(self) -> None:
-        """Play Doom menu scroll sound (non-blocking, drops if queue full)."""
+        """Play Doom menu scroll sound with intelligent throttling to prevent sound pileup during fast spins."""
         if not self.sounds_enabled or not SCROLL_WAV.exists():
             return
+        now = time.monotonic()
+        # Throttles rapid rotation to max ~13 sounds/sec (75ms min interval)
+        if now - self._last_scroll_time < 0.075:
+            return
+        self._last_scroll_time = now
         try:
             self._queue.put_nowait(SCROLL_WAV)
         except queue.Full:
             pass
 
     def play_click(self) -> None:
-        """Play Doom menu click / select sound (non-blocking)."""
+        """Play Doom menu click / select sound (clears queued scroll ticks for instant response)."""
         if not self.sounds_enabled or not CLICK_WAV.exists():
             return
+        # Purge pending scrolls so selection sound plays immediately
+        while not self._queue.empty():
+            try:
+                self._queue.get_nowait()
+            except queue.Empty:
+                break
         try:
             self._queue.put_nowait(CLICK_WAV)
         except queue.Full:

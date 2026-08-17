@@ -59,9 +59,10 @@ class MenuBase:
         """Called when this menu is popped off the stack."""
         pass
 
-    def on_rotate(self, delta: int) -> None:
-        """Called on rotary encoder turn. delta is +1 (CW) or -1 (CCW)."""
-        pass
+    def on_rotate(self, delta: int) -> bool:
+        """Called on rotary encoder turn. delta is +1 (CW) or -1 (CCW).
+        Returns True if selection/value actually changed, False otherwise."""
+        return False
 
     def on_click(self) -> None:
         """Called on rotary encoder button press."""
@@ -122,14 +123,18 @@ class NavigationMenu(MenuBase):
         self._current_index = 0
         self._view_start = 0
 
-    def on_rotate(self, delta: int) -> None:
-        new_idx = self._current_index + delta
-        self._current_index = max(0, min(len(self._all_items) - 1, new_idx))
+    def on_rotate(self, delta: int) -> bool:
+        prev_idx = self._current_index
+        new_idx = max(0, min(len(self._all_items) - 1, self._current_index + delta))
+        if new_idx == prev_idx:
+            return False
+        self._current_index = new_idx
         # Slide the 4-line viewport to keep selection visible.
         if self._current_index < self._view_start:
             self._view_start = self._current_index
         elif self._current_index >= self._view_start + self.VIEW_SIZE:
             self._view_start = self._current_index - self.VIEW_SIZE + 1
+        return True
 
     def on_click(self) -> None:
         if not self._all_items or self._gui is None:
@@ -223,8 +228,13 @@ class VariableMenu(MenuBase):
         super().on_enter(gui)
         self._value = self._get()
 
-    def on_rotate(self, delta: int) -> None:
-        self._value = max(self._min, min(self._max, self._value + delta * self._step))
+    def on_rotate(self, delta: int) -> bool:
+        prev_val = self._value
+        new_val = max(self._min, min(self._max, self._value + delta * self._step))
+        if new_val == prev_val:
+            return False
+        self._value = new_val
+        return True
 
     def on_click(self) -> None:
         self._set(self._value)
@@ -275,13 +285,17 @@ class MultiSelectMenu(MenuBase):
         self._current_index = 0
         self._view_start = 0
 
-    def on_rotate(self, delta: int) -> None:
-        new_idx = self._current_index + delta
-        self._current_index = max(0, min(len(self._items) - 1, new_idx))
+    def on_rotate(self, delta: int) -> bool:
+        prev_idx = self._current_index
+        new_idx = max(0, min(len(self._items) - 1, self._current_index + delta))
+        if new_idx == prev_idx:
+            return False
+        self._current_index = new_idx
         if self._current_index < self._view_start:
             self._view_start = self._current_index
         elif self._current_index >= self._view_start + self.VIEW_SIZE:
             self._view_start = self._current_index - self.VIEW_SIZE + 1
+        return True
 
     def on_click(self) -> None:
         if self._gui is None:
@@ -353,8 +367,9 @@ class PyGameMenu(MenuBase):
     def on_exit(self) -> None:
         self._input_q.put(DeactivateEvent())
 
-    def on_rotate(self, delta: int) -> None:
+    def on_rotate(self, delta: int) -> bool:
         self._input_q.put(EncoderEvent(delta))
+        return True
 
     def on_click(self) -> None:
         self._input_q.put(ButtonEvent())
@@ -511,10 +526,11 @@ class LCDGui:
 
     def handle_rotary_rotation(self, delta: int) -> None:
         try:
-            if self.pc.hardware and getattr(self.pc.hardware, "sound_manager", None):
-                self.pc.hardware.sound_manager.play_scroll()
+            changed = False
             if self.stack:
-                self.stack[-1].on_rotate(delta)
+                changed = bool(self.stack[-1].on_rotate(delta))
+            if changed and self.pc.hardware and getattr(self.pc.hardware, "sound_manager", None):
+                self.pc.hardware.sound_manager.play_scroll()
         except Exception as e:
             print(f"Error handling rotary rotation: {e}")
 
