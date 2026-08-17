@@ -380,12 +380,12 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <span class="telemetry-val" id="net-ssid" style="color: var(--accent-green);">--</span>
             </div>
             <div class="telemetry-row">
-                <span class="telemetry-label">Campus/Local IP:</span>
+                <span class="telemetry-label">Printer IP:</span>
                 <span class="telemetry-val" id="net-local-ip">--</span>
             </div>
             <div class="telemetry-row">
-                <span class="telemetry-label">Tailscale IP:</span>
-                <span class="telemetry-val" id="net-ts-ip" style="color: var(--accent-cyan);">--</span>
+                <span class="telemetry-label">Web Console:</span>
+                <span class="telemetry-val" style="color: var(--accent-cyan);">Port 5000 (Active)</span>
             </div>
             <div class="telemetry-row">
                 <span class="telemetry-label">CPU Temp / RAM:</span>
@@ -558,7 +558,6 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 if (data.network) {
                     document.getElementById('net-ssid').innerText = data.network.ssid;
                     document.getElementById('net-local-ip').innerText = data.network.local_ip;
-                    document.getElementById('net-ts-ip').innerText = data.network.tailscale_ip;
                 }
                 if (data.print_job) {
                     document.getElementById('print-status-badge').innerText = data.print_job.status;
@@ -723,15 +722,6 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                             local_ip = ip
                             break
                 except Exception:
-                    pass
-
-                ts_ip = "Offline"
-                try:
-                    out = subprocess.check_output(["tailscale", "ip", "-4"], text=True, stderr=subprocess.DEVNULL)
-                    ts_ip = out.strip()
-                except Exception:
-                    pass
-
                 print_running = False
                 if self.print_controller:
                     print_running = getattr(self.print_controller, "running", False)
@@ -748,7 +738,6 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                         "network": {
                             "ssid": net_ssid,
                             "local_ip": local_ip,
-                            "tailscale_ip": ts_ip,
                         },
                         "print_job": {
                             "running": print_running,
