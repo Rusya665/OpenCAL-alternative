@@ -25,7 +25,7 @@ class NewhavenLCDBackend:
         self.bus_num = bus_num
         self.address = address
         self._lock = threading.RLock()
-        self.char_delay = 0.0015  # 1.5ms per char prevents PIC buffer drops
+        self.char_delay = 0.0025  # 2.5ms per char prevents PIC buffer drops under CPU load
         time.sleep(0.2)
         if HAS_SMBUS2:
             try:
@@ -65,10 +65,8 @@ class NewhavenLCDBackend:
 
     def render_frame(self, line0: str = "", line1: str = "", line2: str = "", line3: str = ""):
         """
-        Exact 128-byte Circular DDRAM Stream:
-        Row 0 (20) -> Row 2 (20) -> Gap (24) -> Row 1 (20) -> Row 3 (20) -> Gap (24) = 128 bytes
-        Because total HD44780 DDRAM is 128 bytes (0x00-0x7F), writing 128 bytes
-        guarantees the hardware Address Counter wraps back to 0x00 every frame with zero drift.
+        Pads 4 lines to 20 chars and writes exactly 80 bytes in HD44780 sequential order:
+        Line 0 (0x00) -> Line 2 (0x14) -> Line 1 (0x40) -> Line 3 (0x54)
         """
         if not self.bus:
             return
@@ -76,8 +74,7 @@ class NewhavenLCDBackend:
         l1 = line1.ljust(20)[:20]
         l2 = line2.ljust(20)[:20]
         l3 = line3.ljust(20)[:20]
-        gap = " " * 24
-        payload = (l0 + l2 + gap + l1 + l3 + gap).encode("latin-1", errors="replace")
+        payload = (l0 + l2 + l1 + l3).encode("latin-1", errors="replace")
 
         with self._lock:
             try:
