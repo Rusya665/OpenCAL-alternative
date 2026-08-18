@@ -6,7 +6,7 @@ from pathlib import Path
 from opencal.utils.config import Config
 from .hardware_controller import HardwareController
 
-_RECORDING_DIR = Path.home() / "OpenCAL/output/videos"
+_RECORDING_DIR = Path.home() / "OpenCAL-alternative" / "recordings"
 
 
 @final
@@ -33,7 +33,8 @@ class PrintController:
         print(f"Starting print job... {video_file}")
         self.running = True
 
-        self.recording_path = _RECORDING_DIR / f"{video_file.stem}_recording.h264"
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        self.recording_path = _RECORDING_DIR / f"{video_file.stem}_recording_{ts}.mp4"
         self.recording_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.hardware.stepper.start_rotation("CCW")
@@ -63,7 +64,22 @@ class PrintController:
 
         self.hardware.projector.stop_video()
         self.video_playing.clear()
-        self.hardware.camera.stop_recording()
+        
+        saved_mp4 = self.hardware.camera.stop_recording()
         self.hardware.camera.stop_camera()
+
+        # ALWAYS auto-save recording to USB drive if mounted
+        if saved_mp4 and Path(saved_mp4).exists():
+            print(f"✓ Local recording saved: {saved_mp4}")
+            try:
+                usb = self.hardware.usb_device
+                if usb and usb.is_mounted():
+                    import shutil
+                    from opencal.hardware.usb_manager import unique_path
+                    usb_dest = unique_path(usb.usb_save_path(Path(saved_mp4).name))
+                    shutil.copy2(saved_mp4, usb_dest)
+                    print(f"✓ AUTOMATICALLY copied recording to USB: {usb_dest}")
+            except Exception as e:
+                print(f"Error auto-saving recording to USB: {e}")
 
         print("Print job stopped and cleanup complete.")

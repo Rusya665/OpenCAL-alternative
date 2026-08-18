@@ -90,10 +90,9 @@ class PrintLaunchItem(MenuBase):
             pc = self._pc
             def _stop() -> None:
                 threading.Thread(target=pc.stop, daemon=True).start()
-                if pc.ui_config.prompt_usb_video_save and pc.hardware.usb_device.is_mounted():
-                    gui.push(VideoSaveMenu(pc))
-                else:
-                    gui.pop()
+                gui.pop()
+                msg = "Print Stopped\nSaved to USB!" if (pc.hardware and pc.hardware.usb_device and pc.hardware.usb_device.is_mounted()) else "Print Stopped\nSaved to disk"
+                gui.splash(msg, 2.0)
             gui.push(
                 PrintStatusMenu(
                     pc=self._pc,

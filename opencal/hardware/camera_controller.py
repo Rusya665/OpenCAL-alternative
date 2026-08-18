@@ -137,9 +137,12 @@ class CameraController:
             ts = time.strftime("%Y%m%d_%H%M%S")
             rec_dir = Path.home() / "OpenCAL-alternative" / "recordings"
             rec_dir.mkdir(parents=True, exist_ok=True)
-            file = rec_dir / f"recording_{ts}.mp4"
+        # Ensure file ends in .mp4
+        if file.suffix != ".mp4":
+            file = file.with_suffix(".mp4")
 
-        raw_file = file.with_suffix(".h264")
+        # Distinct temporary file for raw H264 stream
+        raw_file = file.with_name(f"{file.stem}.temp_raw.h264")
 
         with self._cam_lock:
             self._recording = True
@@ -181,7 +184,7 @@ class CameraController:
                             ["ffmpeg", "-y", "-r", "30", "-i", str(raw_file), "-c:v", "copy", "-movflags", "+faststart", str(saved_file)],
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
-                            timeout=10.0
+                            timeout=15.0
                         )
                         raw_file.unlink(missing_ok=True)
                         print(f"✓ Packaged HTML5 faststart MP4 -> {saved_file}")
