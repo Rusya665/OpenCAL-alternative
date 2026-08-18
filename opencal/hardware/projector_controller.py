@@ -170,6 +170,12 @@ class Projector:
             self.process = None
 
     def get_calibration_file_names(self) -> list[str]:
+        if not self.calibration_dir_path.exists():
+            default_dir = Path(__file__).parent.parent / "utils" / "calibration"
+            if default_dir.exists():
+                self.calibration_dir_path = default_dir
+            else:
+                return []
         files = sorted(path.name for path in self.calibration_dir_path.glob("*.png"))
         return files
 
@@ -364,30 +370,35 @@ class Projector:
     def display_image(self, image_path: Path | None = None):
         """
         Display a still image fullscreen until stop_video() is called.
-        Uses mpv with infinite loop on the single frame.
         """
         if image_path is None:
             image_path = self.calibration_img_path
+        if not Path(image_path).exists():
+            print(f"Warning: Image {image_path} does not exist, skipping display_image.")
+            return
+
         # If something’s already playing, stop it.
         if self.process:
             self.stop_video()
 
         env = os.environ.copy()
         env["DISPLAY"] = ":0"
-        # env["XAUTHORITY"] = "/home/opencal/.Xauthority"
 
-        # mpv will loop the single image forever (until we terminate it)
-        command = [
-            "/usr/bin/mpv",
-            "--fs",  # fullscreen
-            "--loop-file=inf",  # loop indefinitely
-            "--no-audio",  # no sound
-            "--image-display-duration=inf",  # keep image up forever
-            image_path,
-        ]
-
-        self.process = subprocess.Popen(command, env=env)
-        print(f"Image displayed: {image_path}")
+        try:
+            command = [
+                "/usr/bin/mpv",
+                "--fs",  # fullscreen
+                "--loop-file=inf",  # loop indefinitely
+                "--no-audio",  # no sound
+                "--image-display-duration=inf",  # keep image up forever
+                str(image_path),
+            ]
+            self.process = subprocess.Popen(command, env=env)
+            print(f"Image displayed: {image_path}")
+        except FileNotFoundError:
+            print(f"Warning: /usr/bin/mpv not installed. Cannot display still image {image_path}.")
+        except Exception as e:
+            print(f"Warning: Could not display image: {e}")
 
     def start_image_thread_for_image(self, image_path: Path):
         """

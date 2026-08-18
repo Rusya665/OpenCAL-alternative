@@ -59,9 +59,16 @@ class PrintLaunchItem(MenuBase):
         # Pre-set RPM from filename if it encodes one (e.g. part_15rpm.mp4)
         parsed = _parse_rpm(self._filename)
         if parsed is not None:
-            self._pc.hardware.stepper.set_rpm(parsed)
+            try:
+                self._pc.hardware.stepper.set_rpm(parsed)
+            except Exception as e:
+                print(f"Warning setting RPM: {e}")
 
-        self._pc.hardware.projector.display_image(_DARK_IMAGE)
+        try:
+            if _DARK_IMAGE.exists() and hasattr(self._pc.hardware.projector, "display_image"):
+                self._pc.hardware.projector.display_image(_DARK_IMAGE)
+        except Exception as e:
+            print(f"Warning displaying dark image: {e}")
         gui.push(
             VariableMenu(
                 title="RPM",
