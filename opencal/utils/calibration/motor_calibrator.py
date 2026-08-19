@@ -38,11 +38,13 @@ class TelemetrySessionLogger:
         self._current_file: Path | None = None
         self._csv_writer: Any | None = None
         self._csv_handle: Any | None = None
-        self._lock = threading.Lock()
+        self._write_count: int = 0
+        self._lock = threading.RLock()
 
     def start_session(self, prefix: str = "motor_auto_cal") -> Path:
         with self._lock:
             self.stop_session()
+            self._write_count = 0
             t_str = time.strftime("%Y%m%d_%H%M%S")
             self._current_file = self.output_dir / f"{prefix}_{t_str}.csv"
             self._csv_handle = open(self._current_file, mode="w", newline="", encoding="utf-8")
@@ -65,7 +67,13 @@ class TelemetrySessionLogger:
             if self._csv_writer and self._csv_handle:
                 clean_sample = {k: v for k, v in sample.items() if k in self._csv_writer.fieldnames}
                 self._csv_writer.writerow(clean_sample)
-                self._csv_handle.flush()
+                self._write_count += 1
+                if self._write_count % 30 == 0:
+                    try:
+                        self._csv_handle.flush()
+                    except Exception:
+                        pass
+
 
     def stop_session(self) -> Path | None:
         with self._lock:
@@ -260,9 +268,11 @@ class MotorCalibrator:
             area = cv2.contourArea(c)
             bx, by, bw, bh = cv2.boundingRect(c)
             if self.marker_shape_mode == "line" or self.color_filter in ("dark_line", "black", "black_line"):
-                # Line must span across at least 25% of the gate width and have substantial area
-                if bw >= max(18, int(gate_w * 0.25)) and area >= 60 and bh <= int(gate_h * 0.85):
+                # Line must span across at least 12% of the gate width and have substantial area
+                if bw >= max(16, int(gate_w * 0.12)) and area >= 30 and bh <= int(gate_h * 0.85):
                     valid_targets.append(c)
+
+
             elif self.marker_shape_mode == "dot":
                 if max(bw, bh) <= int(gate_h * 0.50) and area >= 25:
                     valid_targets.append(c)
@@ -308,16 +318,20 @@ class MotorCalibrator:
             if len(self.recent_positions) >= 2:
                 t_prev, y_prev = self.recent_positions[-2]
                 t_curr, y_curr = self.recent_positions[-1]
-                is_zero_crossing = (y_prev < 0.0 <= y_curr) or (y_prev > 0.0 >= y_curr)
+                dt = t_curr - t_prev
+                # Only valid if frames are continuous in time (not across wrap-around gap) and delta-y is reasonable
+                is_continuous = (0.001 < dt < 0.25) and (abs(y_curr - y_prev) < 0.80)
+                is_zero_crossing = is_continuous and ((y_prev < 0.0 <= y_curr) or (y_prev > 0.0 >= y_curr))
+
                 if is_zero_crossing and (self.last_crossing_time == 0.0 or (t_now - self.last_crossing_time > min_period)):
                     if abs(y_curr - y_prev) > 1e-6:
-                        dt = t_curr - t_prev
                         frac = abs(0.0 - y_prev) / abs(y_curr - y_prev)
                         t_cross = t_prev + frac * dt
                     else:
                         t_cross = t_now
 
                     self._register_crossing(t_cross)
+
 
         # 5. Telemetry Gathering
         pi_telemetry = get_pi_system_telemetry()

@@ -16,11 +16,63 @@ from urllib.parse import parse_qs, urlparse
 import cv2
 import numpy as np
 
+import socket
 from opencal.hardware.hardware_controller import HardwareController
 from opencal.hardware.led_manager import BLUE, GREEN, OFF, RED, WHITE, YELLOW
 from opencal.utils.config import Config
 from opencal.utils.telemetry import get_pi_system_telemetry, TelemetrySessionLogger
 from opencal.utils.calibration.motor_calibrator import MotorCalibrator
+
+_last_net_time: float = 0.0
+_cached_net_info: dict[str, str] = {"ssid": "Disconnected", "local_ip": "127.0.0.1", "tailscale_ip": "Offline"}
+
+def get_network_info() -> dict[str, str]:
+    global _last_net_time, _cached_net_info
+    now = time.time()
+    if now - _last_net_time < 4.0:
+        return _cached_net_info
+
+    net_ssid = "Disconnected"
+    local_ip = "127.0.0.1"
+    ts_ip = "Offline"
+
+    if os.name != "nt":
+        try:
+            out = subprocess.check_output(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"], timeout=0.8, text=True, stderr=subprocess.DEVNULL)
+            for line in out.strip().splitlines():
+                parts = line.split(":")
+                if len(parts) >= 2 and ("wifi" in parts[1].lower() or "wireless" in parts[1].lower()):
+                    net_ssid = parts[0]
+                    break
+        except Exception:
+            pass
+
+        try:
+            out = subprocess.check_output(["hostname", "-I"], timeout=0.8, text=True, stderr=subprocess.DEVNULL)
+            for ip in out.strip().split():
+                if not ip.startswith("100."):
+                    local_ip = ip
+                    break
+        except Exception:
+            pass
+    else:
+        try:
+            local_ip = socket.gethostbyname(socket.gethostname())
+        except Exception:
+            pass
+
+    try:
+        out = subprocess.check_output(["tailscale", "ip", "-4"], timeout=0.8, text=True, stderr=subprocess.DEVNULL)
+        ts = out.strip()
+        if ts:
+            ts_ip = ts
+    except Exception:
+        pass
+
+    _cached_net_info = {"ssid": net_ssid, "local_ip": local_ip, "tailscale_ip": ts_ip}
+    _last_net_time = now
+    return _cached_net_info
+
 
 PRINTS_DIR = Path.home() / "OpenCAL-alternative" / "prints"
 PRINTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1213,142 +1265,163 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             }
         }
 
-        // Telemetry Polling (every 500ms)
-        async function updateTelemetry() {
+        // Telemetry Polling (every 500ms) with concurrency protection
+        let isUpdatingTelemetry = false;
+
+        async function fetchWithTimeout(url, timeoutMs=1500) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
             try {
-                const res = await fetch('/api/telemetry');
-                const data = await res.json();
-                if (data.stepper) {
-                    document.getElementById('motor-pos-badge').innerText = 'Position: ' + data.stepper.position;
-                }
-                if (data.lcd && data.lcd.length === 4) {
-                    document.getElementById('lcd-r0').innerText = data.lcd[0];
-                    document.getElementById('lcd-r1').innerText = data.lcd[1];
-                    document.getElementById('lcd-r2').innerText = data.lcd[2];
-                    document.getElementById('lcd-r3').innerText = data.lcd[3];
-                }
-                if (data.system) {
-                    document.getElementById('cpu-temp').innerText = data.system.cpu_temp + ' °C / ' + data.system.ram_usage;
-                    document.getElementById('disk-usage').innerText = data.system.disk_free;
-                }
-                if (data.network) {
-                    document.getElementById('net-ssid').innerText = data.network.ssid;
-                    document.getElementById('net-local-ip').innerText = data.network.local_ip;
-                    document.getElementById('net-ts-ip').innerText = data.network.tailscale_ip || 'Offline';
-                }
-                if (data.print_job) {
-                    document.getElementById('print-status-badge').innerText = data.print_job.status;
-                    document.getElementById('print-status-badge').style.color = data.print_job.running ? 'var(--accent-green)' : 'var(--accent-amber)';
-                }
-                if (data.vial_width_px !== undefined) {
-                    const slider = document.getElementById('vial-width-slider');
-                    if (slider && !slider.matches(':active')) {
-                        slider.value = data.vial_width_px;
-                        document.getElementById('vial-width-val').innerText = data.vial_width_px + ' px';
+                const res = await fetch(url, { signal: controller.signal });
+                clearTimeout(timer);
+                return await res.json();
+            } catch(e) {
+                clearTimeout(timer);
+                return null;
+            }
+        }
+
+        async function updateTelemetry() {
+            if (isUpdatingTelemetry) return;
+            isUpdatingTelemetry = true;
+
+            try {
+                const [data, calData, deep] = await Promise.all([
+                    fetchWithTimeout('/api/telemetry'),
+                    fetchWithTimeout('/api/calibrate/motor/status'),
+                    fetchWithTimeout('/api/telemetry/live')
+                ]);
+
+                // 1. Basic Telemetry
+                if (data) {
+                    if (data.stepper) {
+                        document.getElementById('motor-pos-badge').innerText = 'Position: ' + data.stepper.position;
                     }
-                }
-                if (data.alignment_y_offset_px !== undefined) {
-                    const slider = document.getElementById('align-y-slider');
-                    if (slider && !slider.matches(':active')) {
-                        slider.value = data.alignment_y_offset_px;
-                        const sign = data.alignment_y_offset_px > 0 ? '+' : '';
-                        document.getElementById('align-y-val').innerText = sign + data.alignment_y_offset_px + ' px';
+                    if (data.lcd && data.lcd.length === 4) {
+                        document.getElementById('lcd-r0').innerText = data.lcd[0];
+                        document.getElementById('lcd-r1').innerText = data.lcd[1];
+                        document.getElementById('lcd-r2').innerText = data.lcd[2];
+                        document.getElementById('lcd-r3').innerText = data.lcd[3];
                     }
-                }
-                if (data.sounds_enabled !== undefined && data.sounds_enabled !== soundsEnabled) {
-                    soundsEnabled = data.sounds_enabled;
-                    updateSoundsBtn();
+                    if (data.system) {
+                        document.getElementById('cpu-temp').innerText = data.system.cpu_temp + ' °C / ' + data.system.ram_usage;
+                        document.getElementById('disk-usage').innerText = data.system.disk_free;
+                    }
+                    if (data.network) {
+                        document.getElementById('net-ssid').innerText = data.network.ssid;
+                        document.getElementById('net-local-ip').innerText = data.network.local_ip;
+                        document.getElementById('net-ts-ip').innerText = data.network.tailscale_ip || 'Offline';
+                    }
+                    if (data.print_job) {
+                        document.getElementById('print-status-badge').innerText = data.print_job.status;
+                        document.getElementById('print-status-badge').style.color = data.print_job.running ? 'var(--accent-green)' : 'var(--accent-amber)';
+                    }
+                    if (data.vial_width_px !== undefined) {
+                        const slider = document.getElementById('vial-width-slider');
+                        if (slider && !slider.matches(':active')) {
+                            slider.value = data.vial_width_px;
+                            document.getElementById('vial-width-val').innerText = data.vial_width_px + ' px';
+                        }
+                    }
+                    if (data.alignment_y_offset_px !== undefined) {
+                        const slider = document.getElementById('align-y-slider');
+                        if (slider && !slider.matches(':active')) {
+                            slider.value = data.alignment_y_offset_px;
+                            const sign = data.alignment_y_offset_px > 0 ? '+' : '';
+                            document.getElementById('align-y-val').innerText = sign + data.alignment_y_offset_px + ' px';
+                        }
+                    }
+                    if (data.sounds_enabled !== undefined && data.sounds_enabled !== soundsEnabled) {
+                        soundsEnabled = data.sounds_enabled;
+                        updateSoundsBtn();
+                    }
                 }
 
                 // 2. Motor Calibration Status
-                try {
-                    const calRes = await fetch('/api/calibrate/motor/status');
-                    const calData = await calRes.json();
-                    if (calData && !calData.error) {
-                        const measEl = document.getElementById('cal-meas-rpm');
-                        if (measEl) measEl.innerText = calData.measured_avg_rpm > 0 ? calData.measured_avg_rpm.toFixed(4) : '0.0000';
-                        const jitEl = document.getElementById('cal-jitter-std');
-                        if (jitEl) jitEl.innerHTML = 'Jitter: &plusmn;' + (calData.rpm_jitter_std || 0).toFixed(4) + ' RPM';
-                        const suggEl = document.getElementById('cal-sugg-factor');
-                        if (suggEl) suggEl.innerText = (calData.suggested_correction_factor || 1.0).toFixed(6);
-                        const currEl = document.getElementById('cal-curr-factor');
-                        if (currEl) currEl.innerText = 'Current: ' + (calData.current_correction_factor || 1.0).toFixed(6);
-                        const revEl = document.getElementById('cal-rev-count');
-                        if (revEl) revEl.innerText = calData.revolutions + ' / ' + calData.target_revolutions;
-                        const pct = calData.target_revolutions > 0 ? Math.min(100, Math.round((calData.revolutions / calData.target_revolutions) * 100)) : 0;
-                        const pctEl = document.getElementById('cal-progress-pct');
-                        if (pctEl) pctEl.innerText = pct + '%';
-                        const barEl = document.getElementById('cal-progress-bar');
-                        if (barEl) barEl.style.width = pct + '%';
-                        const statEl = document.getElementById('cal-status-text');
-                        if (statEl) statEl.innerText = 'Status: ' + (calData.status_message || 'Idle');
-                        
-                        const badge = document.getElementById('cal-status-badge');
-                        if (badge) {
-                            if (calData.is_active) {
-                                badge.innerText = 'CALIBRATING (' + pct + '%)';
-                                badge.style.color = 'var(--accent-green)';
-                            } else if (calData.calibration_complete) {
-                                badge.innerText = 'COMPLETED';
-                                badge.style.color = 'var(--accent-cyan)';
-                            } else {
-                                badge.innerText = 'LIVE ACTIVE STREAM';
-                                badge.style.color = 'var(--accent-cyan)';
-                            }
+                if (calData && !calData.error) {
+                    const measEl = document.getElementById('cal-meas-rpm');
+                    if (measEl) measEl.innerText = calData.measured_avg_rpm > 0 ? calData.measured_avg_rpm.toFixed(4) : '0.0000';
+                    const jitEl = document.getElementById('cal-jitter-std');
+                    if (jitEl) jitEl.innerHTML = 'Jitter: &plusmn;' + (calData.rpm_jitter_std || 0).toFixed(4) + ' RPM';
+                    const suggEl = document.getElementById('cal-sugg-factor');
+                    if (suggEl) suggEl.innerText = (calData.suggested_correction_factor || 1.0).toFixed(6);
+                    const currEl = document.getElementById('cal-curr-factor');
+                    if (currEl) currEl.innerText = 'Current: ' + (calData.current_correction_factor || 1.0).toFixed(6);
+                    const revEl = document.getElementById('cal-rev-count');
+                    if (revEl) revEl.innerText = calData.revolutions + ' / ' + calData.target_revolutions;
+                    const pct = calData.target_revolutions > 0 ? Math.min(100, Math.round((calData.revolutions / calData.target_revolutions) * 100)) : 0;
+                    const pctEl = document.getElementById('cal-progress-pct');
+                    if (pctEl) pctEl.innerText = pct + '%';
+                    const barEl = document.getElementById('cal-progress-bar');
+                    if (barEl) barEl.style.width = pct + '%';
+                    const statEl = document.getElementById('cal-status-text');
+                    if (statEl) statEl.innerText = 'Status: ' + (calData.status_message || 'Idle');
+                    
+                    const badge = document.getElementById('cal-status-badge');
+                    if (badge) {
+                        if (calData.is_active) {
+                            badge.innerText = 'CALIBRATING (' + pct + '%)';
+                            badge.style.color = 'var(--accent-green)';
+                        } else if (calData.calibration_complete) {
+                            badge.innerText = 'COMPLETED';
+                            badge.style.color = 'var(--accent-cyan)';
+                        } else {
+                            badge.innerText = 'LIVE ACTIVE STREAM';
+                            badge.style.color = 'var(--accent-cyan)';
                         }
                     }
-                } catch(ce) {}
+                }
 
                 // 3. Deep Real-Time Sensor Telemetry Matrix
-                try {
-                    const deepRes = await fetch('/api/telemetry/live');
-                    const deep = await deepRes.json();
-                    if (deep && !deep.error) {
-                        if (deep.pi) {
-                            document.getElementById('t-pi-temp').innerText = deep.pi.cpu_temp_c + ' °C';
-                            document.getElementById('t-pi-volts').innerText = deep.pi.core_voltage_v + ' V';
-                            document.getElementById('t-pi-clock').innerText = deep.pi.arm_clock_mhz + ' MHz';
-                            document.getElementById('t-pi-cpu').innerText = (deep.pi.cpu_usage_pct || 0) + ' %';
-                            document.getElementById('t-pi-ram').innerText = (deep.pi.ram_used_mb || 0) + ' MB';
-                            const warnings = deep.pi.throttle_warnings || [];
-                            const thEl = document.getElementById('t-pi-throttle');
-                            if (warnings.length === 0) {
-                                thEl.innerText = 'HEALTHY';
-                                thEl.style.color = 'var(--accent-green)';
-                            } else {
-                                thEl.innerText = warnings[0];
-                                thEl.style.color = 'var(--accent-rose)';
-                            }
-                        }
-                        if (deep.stepper) {
-                            document.getElementById('t-motor-vin').innerText = (deep.stepper.vin_voltage_v || 12.0) + ' V';
-                            document.getElementById('t-motor-driver').innerText = deep.stepper.driver || 'TMC2209';
-                            document.getElementById('t-motor-load').innerText = deep.stepper.stallguard_load || 0;
-                            document.getElementById('t-motor-status').innerText = deep.stepper.status || 'Idle';
-                            document.getElementById('t-motor-freq').innerText = (deep.stepper.step_frequency_hz || 0) + ' Hz';
-                            document.getElementById('t-motor-temp').innerText = deep.stepper.driver_temp_status || 'OK';
-                        }
-                        if (deep.calibration) {
-                            const locked = deep.calibration.marker_detected;
-                            const lockEl = document.getElementById('t-vis-lock');
-                            lockEl.innerText = locked ? 'LOCKED' : 'SEARCHING';
-                            lockEl.style.color = locked ? 'var(--accent-green)' : 'var(--accent-amber)';
-                            document.getElementById('t-vis-shape').innerText = (deep.calibration.detected_shape || 'NONE').toUpperCase();
-                            document.getElementById('t-vis-y').innerText = deep.calibration.marker_norm_y !== undefined ? (deep.calibration.marker_norm_y > 0 ? '+' : '') + deep.calibration.marker_norm_y.toFixed(3) : '0.000';
-                            document.getElementById('t-vis-tilt').innerText = (deep.calibration.line_tilt_deg !== undefined ? (deep.calibration.line_tilt_deg > 0 ? '+' : '') + deep.calibration.line_tilt_deg.toFixed(1) : '0.0') + '°';
-                            document.getElementById('t-vis-wobble').innerText = (deep.calibration.wobble_runout_px || 0).toFixed(1) + ' px';
-                            document.getElementById('t-vis-conf').innerText = (deep.calibration.confidence || 0) + ' px²';
-                        }
-                        if (deep.stepped_test && document.getElementById('step-status-msg')) {
-                            document.getElementById('step-status-msg').innerText = deep.stepped_test.status_message || 'Ready';
-                        }
-                        if (deep.marker_finder && document.getElementById('finder-status-msg')) {
-                            document.getElementById('finder-status-msg').innerText = deep.marker_finder.status_message || 'Ready';
+                if (deep && !deep.error) {
+                    if (deep.pi) {
+                        document.getElementById('t-pi-temp').innerText = deep.pi.cpu_temp_c + ' °C';
+                        document.getElementById('t-pi-volts').innerText = deep.pi.core_voltage_v + ' V';
+                        document.getElementById('t-pi-clock').innerText = deep.pi.arm_clock_mhz + ' MHz';
+                        document.getElementById('t-pi-cpu').innerText = (deep.pi.cpu_usage_pct || 0) + ' %';
+                        document.getElementById('t-pi-ram').innerText = (deep.pi.ram_used_mb || 0) + ' MB';
+                        const warnings = deep.pi.throttle_warnings || [];
+                        const thEl = document.getElementById('t-pi-throttle');
+                        if (warnings.length === 0) {
+                            thEl.innerText = 'HEALTHY';
+                            thEl.style.color = 'var(--accent-green)';
+                        } else {
+                            thEl.innerText = warnings[0];
+                            thEl.style.color = 'var(--accent-rose)';
                         }
                     }
-                } catch(de) {}
-            } catch (e) {}
+                    if (deep.stepper) {
+                        document.getElementById('t-motor-vin').innerText = (deep.stepper.vin_voltage_v || 12.0) + ' V';
+                        document.getElementById('t-motor-driver').innerText = deep.stepper.driver || 'TMC2209';
+                        document.getElementById('t-motor-load').innerText = deep.stepper.stallguard_load || 0;
+                        document.getElementById('t-motor-status').innerText = deep.stepper.status || 'Idle';
+                        document.getElementById('t-motor-freq').innerText = (deep.stepper.step_frequency_hz || 0) + ' Hz';
+                        document.getElementById('t-motor-temp').innerText = deep.stepper.driver_temp_status || 'OK';
+                    }
+                    if (deep.calibration) {
+                        const locked = deep.calibration.marker_detected;
+                        const lockEl = document.getElementById('t-vis-lock');
+                        lockEl.innerText = locked ? 'LOCKED' : 'SEARCHING';
+                        lockEl.style.color = locked ? 'var(--accent-green)' : 'var(--accent-amber)';
+                        document.getElementById('t-vis-shape').innerText = (deep.calibration.detected_shape || 'NONE').toUpperCase();
+                        document.getElementById('t-vis-y').innerText = deep.calibration.marker_norm_y !== undefined ? (deep.calibration.marker_norm_y > 0 ? '+' : '') + deep.calibration.marker_norm_y.toFixed(3) : '0.000';
+                        document.getElementById('t-vis-tilt').innerText = (deep.calibration.line_tilt_deg !== undefined ? (deep.calibration.line_tilt_deg > 0 ? '+' : '') + deep.calibration.line_tilt_deg.toFixed(1) : '0.0') + '°';
+                        document.getElementById('t-vis-wobble').innerText = (deep.calibration.wobble_runout_px || 0).toFixed(1) + ' px';
+                        document.getElementById('t-vis-conf').innerText = (deep.calibration.confidence || 0) + ' px²';
+                    }
+                    if (deep.stepped_test && document.getElementById('step-status-msg')) {
+                        document.getElementById('step-status-msg').innerText = deep.stepped_test.status_message || 'Ready';
+                    }
+                    if (deep.marker_finder && document.getElementById('finder-status-msg')) {
+                        document.getElementById('finder-status-msg').innerText = deep.marker_finder.status_message || 'Ready';
+                    }
+                }
+            } catch (e) {
+            } finally {
+                isUpdatingTelemetry = false;
+            }
         }
+
 
         async function scanWifiNetworks() {
             const div = document.getElementById('wifi-scan-results');
@@ -1516,36 +1589,8 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
-                # Get Network Telemetry
-                net_ssid = "Disconnected"
-                try:
-                    out = subprocess.check_output(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"], text=True)
-                    for line in out.strip().splitlines():
-                        parts = line.split(":")
-                        if len(parts) >= 2 and ("wifi" in parts[1].lower() or "wireless" in parts[1].lower()):
-                            net_ssid = parts[0]
-                            break
-                except Exception:
-                    pass
-
-                local_ip = "No IP"
-                try:
-                    out = subprocess.check_output(["hostname", "-I"], text=True)
-                    for ip in out.strip().split():
-                        if not ip.startswith("100."):
-                            local_ip = ip
-                            break
-                except Exception:
-                    pass
-
-                ts_ip = "Offline"
-                try:
-                    out = subprocess.check_output(["tailscale", "ip", "-4"], timeout=1.0, text=True, stderr=subprocess.DEVNULL)
-                    ts = out.strip()
-                    if ts:
-                        ts_ip = ts
-                except Exception:
-                    pass
+                # Get Cached Network Telemetry
+                net_info = get_network_info()
 
                 print_running = False
                 if self.print_controller:
@@ -1561,9 +1606,9 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                             "disk_free": disk_free,
                         },
                         "network": {
-                            "ssid": net_ssid,
-                            "local_ip": local_ip,
-                            "tailscale_ip": ts_ip,
+                            "ssid": net_info.get("ssid", "Disconnected"),
+                            "local_ip": net_info.get("local_ip", "127.0.0.1"),
+                            "tailscale_ip": net_info.get("tailscale_ip", "Offline"),
                         },
                         "print_job": {
                             "running": print_running,
@@ -2370,17 +2415,40 @@ def start_web_console_thread(print_controller_or_hardware: Any, host="0.0.0.0", 
                 if frame_bgr is None:
                     # Simulation fallback when camera is absent
                     frame_bgr = np.zeros((480, 640, 3), dtype=np.uint8)
-                    cv2.rectangle(frame_bgr, (160, 80), (480, 400), (35, 45, 55), -1)
-                    cv2.rectangle(frame_bgr, (280, 80), (360, 400), (65, 65, 65), -1)
-                    if WebConsoleHandler.motor_calibrator and WebConsoleHandler.motor_calibrator.is_active:
-                        sim_speed = WebConsoleHandler.motor_calibrator.target_rpm * 360.0 / 60.0
+                    # Chamber background
+                    frame_bgr[:] = (20, 25, 35)
+                    # Vial cylinder (dark glass)
+                    cv2.rectangle(frame_bgr, (160, 80), (480, 400), (45, 55, 65), -1)
+                    # Center opaque white tape band
+                    cv2.rectangle(frame_bgr, (240, 95), (400, 385), (235, 235, 235), -1)
+                    
+                    cal = WebConsoleHandler.motor_calibrator
+                    color_mode = getattr(cal, "color_filter", "dark_line") if cal else "dark_line"
+                    is_active = (cal.is_active if cal else False) or (WebConsoleHandler.marker_finder and WebConsoleHandler.marker_finder.is_searching) or (WebConsoleHandler.stepped_runner and WebConsoleHandler.stepped_runner.is_running)
+
+                    if is_active:
+                        sim_speed = (cal.target_rpm if cal else 9.0) * 360.0 / 60.0
                         sim_angle = (sim_angle + sim_speed * 0.033) % 360.0
                         if sim_angle < 180.0:
                             rad = math.radians(sim_angle)
                             dot_y = int(240 - 120 * math.cos(rad))
-                            cv2.circle(frame_bgr, (320, dot_y), 11, (255, 255, 255), -1)
+                            wobble_x = int(6.0 * math.sin(rad * 2))
+                            cx = 320 + wobble_x
+                            if color_mode in ("dark_line", "dark_dot", "black", "black_line"):
+                                # Thick black line on white tape
+                                cv2.line(frame_bgr, (cx - 30, dot_y - 2), (cx + 30, dot_y + 2), (15, 15, 15), 6)
+                            elif color_mode == "red":
+                                cv2.line(frame_bgr, (cx - 30, dot_y - 2), (cx + 30, dot_y + 2), (20, 20, 220), 6)
+                            elif color_mode == "green":
+                                cv2.line(frame_bgr, (cx - 30, dot_y - 2), (cx + 30, dot_y + 2), (20, 220, 20), 6)
+                            else:
+                                cv2.circle(frame_bgr, (cx, dot_y), 11, (255, 255, 255), -1)
                     else:
-                        cv2.circle(frame_bgr, (320, 240), 11, (255, 255, 255), -1)
+                        if color_mode in ("dark_line", "dark_dot", "black", "black_line"):
+                            cv2.line(frame_bgr, (290, 238), (350, 242), (15, 15, 15), 6)
+                        else:
+                            cv2.circle(frame_bgr, (320, 240), 11, (255, 255, 255), -1)
+
 
                 if WebConsoleHandler.motor_calibrator and frame_bgr is not None:
                     annotated, _ = WebConsoleHandler.motor_calibrator.process_frame(frame_bgr)
@@ -2398,7 +2466,7 @@ def start_web_console_thread(print_controller_or_hardware: Any, host="0.0.0.0", 
     server = ThreadingHTTPServer((host, port), WebConsoleHandler)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
-    print(f"🚀 OpenCAL Web Studio Live at http://0.0.0.0:{port}")
+    print(f"[OK] OpenCAL Web Studio Live at http://0.0.0.0:{port}")
     return server_thread
 
 
