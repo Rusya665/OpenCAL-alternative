@@ -1004,27 +1004,41 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                     updateSoundsBtn();
                 }
 
-                // 2. Motor Calibration St                    if (calData && !calData.error) {
-                        document.getElementById('cal-meas-rpm').innerText = calData.measured_avg_rpm > 0 ? calData.measured_avg_rpm.toFixed(4) : '0.0000';
-                        document.getElementById('cal-jitter-std').innerHTML = 'Jitter: &plusmn;' + (calData.rpm_jitter_std || 0).toFixed(4) + ' RPM';
-                        document.getElementById('cal-sugg-factor').innerText = (calData.suggested_correction_factor || 1.0).toFixed(6);
-                        document.getElementById('cal-curr-factor').innerText = 'Current: ' + (calData.current_correction_factor || 1.0).toFixed(6);
-                        document.getElementById('cal-rev-count').innerText = calData.revolutions + ' / ' + calData.target_revolutions;
+                // 2. Motor Calibration Status
+                try {
+                    const calRes = await fetch('/api/calibrate/motor/status');
+                    const calData = await calRes.json();
+                    if (calData && !calData.error) {
+                        const measEl = document.getElementById('cal-meas-rpm');
+                        if (measEl) measEl.innerText = calData.measured_avg_rpm > 0 ? calData.measured_avg_rpm.toFixed(4) : '0.0000';
+                        const jitEl = document.getElementById('cal-jitter-std');
+                        if (jitEl) jitEl.innerHTML = 'Jitter: &plusmn;' + (calData.rpm_jitter_std || 0).toFixed(4) + ' RPM';
+                        const suggEl = document.getElementById('cal-sugg-factor');
+                        if (suggEl) suggEl.innerText = (calData.suggested_correction_factor || 1.0).toFixed(6);
+                        const currEl = document.getElementById('cal-curr-factor');
+                        if (currEl) currEl.innerText = 'Current: ' + (calData.current_correction_factor || 1.0).toFixed(6);
+                        const revEl = document.getElementById('cal-rev-count');
+                        if (revEl) revEl.innerText = calData.revolutions + ' / ' + calData.target_revolutions;
                         const pct = calData.target_revolutions > 0 ? Math.min(100, Math.round((calData.revolutions / calData.target_revolutions) * 100)) : 0;
-                        document.getElementById('cal-progress-pct').innerText = pct + '%';
-                        document.getElementById('cal-progress-bar').style.width = pct + '%';
-                        document.getElementById('cal-status-text').innerText = 'Status: ' + (calData.status_message || 'Idle');
+                        const pctEl = document.getElementById('cal-progress-pct');
+                        if (pctEl) pctEl.innerText = pct + '%';
+                        const barEl = document.getElementById('cal-progress-bar');
+                        if (barEl) barEl.style.width = pct + '%';
+                        const statEl = document.getElementById('cal-status-text');
+                        if (statEl) statEl.innerText = 'Status: ' + (calData.status_message || 'Idle');
                         
                         const badge = document.getElementById('cal-status-badge');
-                        if (calData.is_active) {
-                            badge.innerText = 'CALIBRATING (' + pct + '%)';
-                            badge.style.color = 'var(--accent-green)';
-                        } else if (calData.calibration_complete) {
-                            badge.innerText = 'COMPLETED';
-                            badge.style.color = 'var(--accent-cyan)';
-                        } else {
-                            badge.innerText = 'READY';
-                            badge.style.color = 'var(--text-muted)';
+                        if (badge) {
+                            if (calData.is_active) {
+                                badge.innerText = 'CALIBRATING (' + pct + '%)';
+                                badge.style.color = 'var(--accent-green)';
+                            } else if (calData.calibration_complete) {
+                                badge.innerText = 'COMPLETED';
+                                badge.style.color = 'var(--accent-cyan)';
+                            } else {
+                                badge.innerText = 'LIVE ACTIVE STREAM';
+                                badge.style.color = 'var(--accent-cyan)';
+                            }
                         }
                     }
                 } catch(ce) {}
