@@ -95,7 +95,7 @@ class MotorCalibrator:
             if self.hw and hasattr(self.hw, "led_manager") and self.hw.led_manager:
                 try:
                     from opencal.hardware.led_manager import GREEN, WHITE
-                    self.hw.led_manager.set_solid_color(GREEN if color_mode == "green" else WHITE)
+                    self.hw.led_manager.set_color(GREEN if color_mode == "green" else WHITE)
                 except Exception:
                     pass
 
@@ -169,21 +169,39 @@ class MotorCalibrator:
                 _, mask = cv2.threshold(gray, thresh_val, 255, cv2.THRESH_BINARY)
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # Filter valid contours (size between 10px and 45% of ROI)
-        valid_contours = [c for c in contours if 10 < cv2.contourArea(c) < (roi_w * roi_h * 0.45)]
+        # Strict contour validation: a drawn line or dot is compact, not a giant ambient blob!
+        valid_contours = []
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area < 10 or area > 4500:
+                continue
+            bx, by, bw, bh = cv2.boundingRect(c)
+            # Rejection: Marker lines are horizontal and thin; dots are small
+            if self.marker_shape_mode == "line" or (self.color_filter == "red" and self.marker_shape_mode != "dot"):
+                if bh > 40:  # line cannot be taller than 40px
+                    continue
+                if bw < 15:  # line must have minimal width
+                    continue
+                valid_contours.append(c)
+            elif self.marker_shape_mode == "dot":
+                if bw > 65 or bh > 65:  # dot cannot be giant
+                    continue
+                valid_contours.append(c)
+            else:  # "auto"
+                if bh > 65 and bw > 65:  # discard massive background patches
+                    continue
+                valid_contours.append(c)
 
         if valid_contours:
             # Score contours based on shape mode preference
             if self.marker_shape_mode == "line" or (self.color_filter == "red" and self.marker_shape_mode != "dot"):
-                # Prefer elongated horizontal lines: higher width and aspect ratio (bw / bh)
                 def _line_score(c):
                     bx, by, bw, bh = cv2.boundingRect(c)
                     aspect = bw / max(float(bh), 1.0)
-                    length_bonus = min(bw / 20.0, 5.0)
+                    length_bonus = min(bw / 15.0, 6.0)
                     return cv2.contourArea(c) * (aspect ** 1.8) * length_bonus
                 best_c = max(valid_contours, key=_line_score)
             elif self.marker_shape_mode == "dot":
-                # Prefer circular/compact blobs
                 def _dot_score(c):
                     bx, by, bw, bh = cv2.boundingRect(c)
                     ar = max(bw, bh) / max(1.0, min(bw, bh))
@@ -235,23 +253,25 @@ class MotorCalibrator:
                 if len(self.cx_history) >= 10:
                     self.wobble_runout_px = float(max(self.cx_history) - min(self.cx_history))
 
-        # 3. Sub-Frame Crossing Detection
+        # 3. Sub-Frame Crossing Detection (Bidirectional & Ingress-Aware)
         if self.is_active and marker_detected:
             self.recent_positions.append((t_now, marker_norm_y))
             self.trajectory_history.append((t_now, marker_norm_y))
 
-            # Minimum time between 360° revolutions at target RPM (e.g. 5.5s @ 9 RPM)
-            min_period = (60.0 / self.target_rpm) * 0.65
+            # Minimum time between 360° revolutions at target RPM (e.g. 4.0s @ 9 RPM)
+            min_period = (60.0 / self.target_rpm) * 0.60
 
             if len(self.recent_positions) >= 2:
                 t_prev, y_prev = self.recent_positions[-2]
                 t_curr, y_curr = self.recent_positions[-1]
 
-                # Centerline Zero-Crossing: y crosses 0.0 with positive vertical velocity
-                if (y_prev < 0.0 <= y_curr) and (t_now - self.last_crossing_time > min_period):
+                # Centerline Zero-Crossing: supports both CW (y_prev < 0 <= y_curr) and CCW (y_prev > 0 >= y_curr)
+                is_zero_crossing = (y_prev < 0.0 <= y_curr) or (y_prev > 0.0 >= y_curr)
+                
+                if is_zero_crossing and (t_now - self.last_crossing_time > min_period):
                     if abs(y_curr - y_prev) > 1e-6:
                         dt = t_curr - t_prev
-                        frac = (0.0 - y_prev) / (y_curr - y_prev)
+                        frac = abs(0.0 - y_prev) / abs(y_curr - y_prev)
                         t_cross = t_prev + frac * dt
                     else:
                         t_cross = t_now
