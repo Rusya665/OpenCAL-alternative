@@ -244,7 +244,10 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;">
                 <a id="modal-video-download" href="#" download class="primary" style="text-decoration: none; padding: 8px 16px; font-size: 13px; border-radius: 6px; display: inline-block;">⬇ Download MP4</a>
             </div>
-            <div class="grid">
+        </div>
+    </div>
+
+    <div class="grid">
         <!-- 0. PRECISION MOTOR AUTO-TUNER & DEEP TELEMETRY MATRIX -->
         <div class="card" style="grid-column: 1 / -1; border-color: rgba(6, 182, 212, 0.4); background: rgba(10, 18, 32, 0.85);">
             <div class="card-title">
@@ -872,6 +875,12 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         }
         function playExpVideo(filename) {
             const vol = parseInt(document.getElementById('proj-vol-slider').value);
+            postAPI('/api/experimental/play', {video: filename, volume: vol});
+        }
+        function stopExpVideo() {
+            postAPI('/api/experimental/stop');
+        }
+
         // Motor Auto-Calibration
         async function startMotorAutoCal() {
             const rpm = parseFloat(document.getElementById('cal-target-rpm').value);
