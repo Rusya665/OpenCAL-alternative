@@ -52,3 +52,26 @@ class MockStepperMotor(StepperMotorInterface):
     @override
     def angle_in_degrees(self) -> float:
         return self.angle_in_steps() / self.encoder_cpr * 360
+
+    @override
+    def set_correction_factor(self, factor: float) -> None:
+        self.correction_factor = factor
+        print(f"[MockStepper] set_correction_factor {factor}")
+
+    @override
+    def get_telemetry(self) -> dict:
+        return {
+            "driver": "mock",
+            "is_running": self._running,
+            "target_rpm": self._speed_rpm,
+            "measured_rpm": self._speed_rpm if self._running else 0.0,
+            "direction": self.default_direction,
+            "steps": self._steps,
+            "angle_deg": round(self.angle_in_degrees(), 2),
+            "vin_voltage_v": 12.08 if self._running else 12.15,
+            "driver_temp_c": 38.5 if self._running else 29.0,
+            "status": "Running" if self._running else "Idle",
+            "errors": [],
+            "correction_factor": getattr(self, "correction_factor", 1.0),
+            "stallguard_load": 420 if self._running else 0,
+        }

@@ -231,7 +231,7 @@ class Projector:
             subprocess.run(["cec-ctl", "-d", "/dev/cec0", "--to", "0", "--active-source", "phys-addr=1.0.0.0"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.5)
         except Exception:
             pass
-        print("✓ Sent Projector Power ON signal")
+        print("[OK] Sent Projector Power ON signal")
 
     def turn_off_projector(self) -> None:
         """Send HDMI-CEC standby signal and turn off HDMI display output to put projector into standby/off."""

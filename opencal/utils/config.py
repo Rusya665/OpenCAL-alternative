@@ -39,6 +39,7 @@ class StepperConfigBase:
         self.default_direction: str = config["default_direction"]
         self.steps_per_revolution: int = config["steps_per_revolution"]
         self.encoder_cpr: int = config["encoder_cpr"]
+        self.correction_factor: float = float(config.get("correction_factor", 0.988375 if self.driver_mode == "uart" else 1.0))
 
 
 # Alias so existing imports of StepperConfig still work

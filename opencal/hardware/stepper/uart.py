@@ -38,6 +38,7 @@ class UARTStepperMotor(StepperMotorInterface):
         self.encoder_cpr = config.encoder_cpr
         self.uart_address = config.uart_address
         self.microsteps = config.microsteps
+        self.correction_factor: float = getattr(config, "correction_factor", 0.988375)
 
         self._speed_rpm: float = config.default_rpm
         self._current_direction: str = config.default_direction
@@ -83,6 +84,28 @@ class UARTStepperMotor(StepperMotorInterface):
         # Single-wire UART echoes TX back on RX; read and discard the 8-byte echo.
         self._serial.read(8)
 
+    def _read_register(self, reg: int) -> int | None:
+        """Read a 32-bit register from the TMC2209 via UART."""
+        if self._serial is None:
+            return None
+        try:
+            # 4-byte read request datagram: sync (0x05), addr, reg, crc
+            req = bytes([_SYNC_BYTE, self.uart_address, reg & 0x7F])
+            req += bytes([_crc8(req)])
+            self._serial.flushInput()
+            self._serial.write(req)
+            # Echo of 4-byte request + 8-byte response
+            raw = self._serial.read(12)
+            if len(raw) < 12:
+                return None
+            resp = raw[4:]
+            if resp[0] != _SYNC_BYTE or resp[1] != 0xFF or resp[2] != (reg & 0x7F):
+                return None
+            val = (resp[3] << 24) | (resp[4] << 16) | (resp[5] << 8) | resp[6]
+            return val
+        except Exception:
+            return None
+
     def _write_vactual(self, vactual: int) -> None:
         # Encode as 24-bit (handles sign via two's complement masking).
         self._write_register(_REG_VACTUAL, vactual & 0xFFFFFF)
@@ -96,6 +119,14 @@ class UARTStepperMotor(StepperMotorInterface):
     @override
     def speed_rpm(self) -> float:
         return self._speed_rpm
+
+    @override
+    def set_correction_factor(self, factor: float) -> None:
+        """Update live motor correction multiplier and immediately re-apply if running."""
+        print(f"INFO: Updating motor CORRECTION_FACTOR from {self.correction_factor} to {factor}")
+        self.correction_factor = factor
+        if self.is_running():
+            self._write_vactual(self._signed_vactual(self._speed_rpm))
 
     @override
     def set_rpm(self, rpm: float | None = None, ramp_time: float = 0) -> None:
@@ -180,19 +211,55 @@ class UARTStepperMotor(StepperMotorInterface):
 
     def _rpm_to_vactual(self, rpm: float, steps_per_rev: int) -> int:
         """Convert RPM to unsigned VACTUAL magnitude for the TMC2209."""
+        steps_per_rev_eff: float = steps_per_rev * (self.microsteps / 8)
+        fstep = rpm * steps_per_rev_eff / 60.0
+        frac_vactual = self.correction_factor * fstep * (2**24) / _TMC_CLK_HZ
+        return round(frac_vactual)
 
-        # FIXME: Make this formula and config more clear
-        # steps per rev is based on microstepping being 8; convert to actual steps per rev
-        steps_per_rev: float = steps_per_rev * (self.microsteps / 8)
+    @override
+    def get_telemetry(self) -> dict:
+        """Query TMC2209 driver registers for real-time motor health and load telemetry."""
+        drv_status = self._read_register(0x6F)  # DRV_STATUS
+        sg_result = self._read_register(0x41)   # SG_RESULT (StallGuard load)
+        ioin = self._read_register(0x06)        # IOIN
+        tstep = self._read_register(0x12)       # TSTEP
 
-        fstep = rpm * steps_per_rev / 60.0
-        print(f"fstep is {fstep}")
-        # CORRECTION_FACTOR = 0.9849  # From the TMC2209 clock
-        CORRECTION_FACTOR = 0.988375
-        bad_vactual = round(fstep * (2**24) / _TMC_CLK_HZ)  # Without correction factor
-        # With correction factor, use this value if interpolating
-        frac_vactual = CORRECTION_FACTOR * fstep * (2**24) / _TMC_CLK_HZ
-        vactual = round(frac_vactual)
+        errors = []
+        driver_temp_flag = "OK (<120C)"
+        standstill = True
+        current_scale = 0
 
-        print(f"{bad_vactual=}\n{frac_vactual=}\n{vactual=}")
-        return vactual
+        if drv_status is not None:
+            standstill = bool(drv_status & (1 << 31))
+            current_scale = (drv_status >> 16) & 0x1F
+            if drv_status & (1 << 8): errors.append("OVERTEMPERATURE_SHUTDOWN")
+            if drv_status & (1 << 9): errors.append("OVERTEMPERATURE_PREWARNING")
+            if drv_status & (1 << 0): errors.append("SHORT_TO_GROUND_A")
+            if drv_status & (1 << 1): errors.append("SHORT_TO_GROUND_B")
+            if drv_status & (1 << 2): errors.append("OPEN_LOAD_A")
+            if drv_status & (1 << 3): errors.append("OPEN_LOAD_B")
+
+            if drv_status & (1 << 7): driver_temp_flag = "Critical (>=157C)"
+            elif drv_status & (1 << 6): driver_temp_flag = "Warning (>=150C)"
+            elif drv_status & (1 << 5): driver_temp_flag = "Elevated (>=143C)"
+            elif drv_status & (1 << 4): driver_temp_flag = "Warm (>=120C)"
+
+        steps_per_rev_eff = self.steps_per_rev * (self.microsteps / 8)
+        fstep = (self._speed_rpm * steps_per_rev_eff / 60.0) if self.is_running() else 0.0
+
+        return {
+            "driver": "TMC2209_UART",
+            "is_running": self.is_running(),
+            "target_rpm": self._speed_rpm,
+            "direction": self._current_direction,
+            "microsteps": self.microsteps,
+            "correction_factor": self.correction_factor,
+            "step_frequency_hz": round(fstep, 2),
+            "stallguard_load": sg_result if sg_result is not None else 0,
+            "driver_temp_status": driver_temp_flag,
+            "current_scale": current_scale,
+            "standstill": standstill,
+            "tstep": tstep if tstep is not None else 0,
+            "errors": errors,
+            "status": "Running" if self.is_running() else "Standstill",
+        }

@@ -29,3 +29,11 @@ class StepperMotorInterface(ABC):
 
     @abstractmethod
     def angle_in_degrees(self) -> float: ...
+
+    def get_telemetry(self) -> dict:
+        """Return driver-specific telemetry dictionary (voltage, errors, load, steps, status)."""
+        return {}
+
+    def set_correction_factor(self, factor: float) -> None:
+        """Update live motor velocity correction factor multiplier."""
+        pass

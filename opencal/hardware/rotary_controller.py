@@ -1,5 +1,12 @@
 from typing import final
-from gpiozero import RotaryEncoder, Button
+
+try:
+    from gpiozero import RotaryEncoder, Button
+    HAS_GPIOZERO = True
+except (ImportError, ModuleNotFoundError):
+    RotaryEncoder = None
+    Button = None
+    HAS_GPIOZERO = False
 
 from opencal.utils.config import RotaryConfig
 
@@ -18,17 +25,20 @@ class RotaryEncoderHandler:
         self.dt_pin = config.dt_pin
         self.btn_pin = config.btn_pin
 
-        # Initialize the rotary encoder and button
-        self.encoder = RotaryEncoder(self.clk_pin, self.dt_pin)
-        self.button = Button(self.btn_pin, bounce_time=0.05)
+        if HAS_GPIOZERO and RotaryEncoder and Button:
+            self.encoder = RotaryEncoder(self.clk_pin, self.dt_pin)
+            self.button = Button(self.btn_pin, bounce_time=0.05)
+        else:
+            self.encoder = None
+            self.button = None
 
     def get_steps(self) -> int:
         """Get current encoder position"""
-        return self.encoder.steps  # Return the current position of the encoder
+        return self.encoder.steps if self.encoder else 0
 
     def was_button_pressed(self) -> bool:
         """Check if button was pressed (for polling-based use)"""
-        return self.button.is_active
+        return self.button.is_active if self.button else False
 
 
 if __name__ == "__main__":

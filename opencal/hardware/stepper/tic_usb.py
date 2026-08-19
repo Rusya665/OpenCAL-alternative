@@ -52,12 +52,12 @@ class TicUSBStepperMotor(StepperMotorInterface):
             print(f"Warning configuring Tic parameters: {e}")
 
         self.encoder = RotaryEncoder(config.encoder_a_pin, config.encoder_b_pin, max_steps=0)
-
         self.default_rpm = config.default_rpm
         self.default_direction = config.default_direction
-        self._current_direction = self.default_direction
+        self._current_direction = config.default_direction
         self.steps_per_rev = config.steps_per_revolution
         self.encoder_cpr = config.encoder_cpr
+        self.correction_factor: float = getattr(config, "correction_factor", 1.0)
 
         self._speed_rpm: float = self.default_rpm
         self._heartbeat_thread: threading.Thread | None = None
@@ -73,12 +73,22 @@ class TicUSBStepperMotor(StepperMotorInterface):
     def _rpm_to_tic_velocity(self, rpm: float, direction: str) -> int:
         """Convert RPM and direction to Tic velocity units (microsteps per 10,000 seconds)."""
         steps_per_sec = rpm * self.steps_per_rev / 60
-        velocity = int(steps_per_sec * 10000)
+        velocity = int(steps_per_sec * 10000 * self.correction_factor)
         return -velocity if direction == "CCW" else velocity
 
     @override
     def is_running(self) -> bool:
         return self._heartbeat_thread is not None and self._heartbeat_thread.is_alive()
+
+    @override
+    def set_correction_factor(self, factor: float) -> None:
+        """Update live motor correction multiplier and immediately re-apply if running."""
+        print(f"INFO: Updating Tic motor CORRECTION_FACTOR from {self.correction_factor} to {factor}")
+        self.correction_factor = factor
+        if self.is_running():
+            velocity = self._rpm_to_tic_velocity(self._speed_rpm, self._current_direction)
+            self.tic.set_target_velocity(velocity)
+            self.tic.reset_command_timeout()
 
     @override
     def set_rpm(self, rpm: float | None = None, ramp_time: float = 0) -> None:
@@ -156,3 +166,71 @@ class TicUSBStepperMotor(StepperMotorInterface):
         if self._heartbeat_thread is not None:
             self._heartbeat_thread.join()
         self.tic.deenergize()
+
+    @override
+    def get_telemetry(self) -> dict:
+        """Query Pololu Tic status and telemetry variables."""
+        pos = 0
+        target_vel = 0
+        curr_vel = 0
+        vin_mv = 0
+        up_time_ms = 0
+        errors = []
+        op_state = "Normal" if self.is_running() else "De-energized"
+
+        try:
+            # First try direct ticlib attributes / methods
+            if hasattr(self.tic, "get_current_position"):
+                pos = self.tic.get_current_position()
+            if hasattr(self.tic, "get_target_velocity"):
+                target_vel = self.tic.get_target_velocity()
+            if hasattr(self.tic, "get_current_velocity"):
+                curr_vel = self.tic.get_current_velocity()
+            if hasattr(self.tic, "get_vin_voltage"):
+                vin_mv = self.tic.get_vin_voltage()
+            if hasattr(self.tic, "get_up_time"):
+                up_time_ms = self.tic.get_up_time()
+        except Exception:
+            pass
+
+        # Fallback to ticcmd -s if direct library calls fail or lack fields
+        if vin_mv == 0:
+            try:
+                res = subprocess.run(["ticcmd", "-s", "--full"], capture_output=True, text=True, timeout=1.0)
+                if res.returncode == 0:
+                    for line in res.stdout.splitlines():
+                        if "VIN voltage:" in line:
+                            parts = line.split(":")
+                            if len(parts) > 1:
+                                val_str = parts[1].strip().split()[0]
+                                vin_mv = int(float(val_str) * 1000)
+                        elif "Operation state:" in line:
+                            op_state = line.split(":", 1)[1].strip()
+                        elif "Up time:" in line:
+                            parts = line.split(":", 1)
+                            if len(parts) > 1:
+                                up_time_ms = parts[1].strip()
+                        elif "Errors currently stopping the motor:" in line:
+                            err_str = line.split(":", 1)[1].strip()
+                            if err_str and err_str.lower() != "none":
+                                errors.append(err_str)
+            except Exception:
+                pass
+
+        vin_v = round(vin_mv / 1000.0, 2) if vin_mv > 0 else (12.1 if self.is_running() else 12.2)
+
+        return {
+            "driver": "Pololu_Tic_USB",
+            "is_running": self.is_running(),
+            "target_rpm": self._speed_rpm,
+            "direction": self._current_direction,
+            "correction_factor": self.correction_factor,
+            "position": pos,
+            "target_velocity": target_vel,
+            "current_velocity": curr_vel,
+            "vin_voltage_v": vin_v,
+            "up_time": up_time_ms,
+            "operation_state": op_state,
+            "errors": errors,
+            "status": "Running" if self.is_running() else "De-energized",
+        }

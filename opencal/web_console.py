@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import io
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -12,9 +13,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+import cv2
+import numpy as np
+
 from opencal.hardware.hardware_controller import HardwareController
 from opencal.hardware.led_manager import BLUE, GREEN, OFF, RED, WHITE, YELLOW
 from opencal.utils.config import Config
+from opencal.utils.telemetry import get_pi_system_telemetry, TelemetrySessionLogger
+from opencal.utils.calibration.motor_calibrator import MotorCalibrator
 
 PRINTS_DIR = Path.home() / "OpenCAL-alternative" / "prints"
 PRINTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -238,10 +244,149 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;">
                 <a id="modal-video-download" href="#" download class="primary" style="text-decoration: none; padding: 8px 16px; font-size: 13px; border-radius: 6px; display: inline-block;">⬇ Download MP4</a>
             </div>
-        </div>
-    </div>
+            <div class="grid">
+        <!-- 0. PRECISION MOTOR AUTO-TUNER & DEEP TELEMETRY MATRIX -->
+        <div class="card" style="grid-column: 1 / -1; border-color: rgba(6, 182, 212, 0.4); background: rgba(10, 18, 32, 0.85);">
+            <div class="card-title">
+                <span style="color: var(--accent-cyan);">🎯 Precision Motor Auto-Tuner &amp; Deep Telemetry</span>
+                <span id="cal-status-badge" class="badge" style="background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); border-color: rgba(6, 182, 212, 0.4);">Ready</span>
+            </div>
 
-    <div class="grid">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px;">
+                <!-- Left: Live Vision Feed & HUD -->
+                <div>
+                    <div class="cam-wrapper" style="border: 1px solid rgba(6, 182, 212, 0.3); height: 280px;">
+                        <img id="cal-cam-stream" class="cam-feed" src="/api/calibrate/motor/stream" alt="Calibrator Feed" style="height: 100%;">
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+                        <button class="primary" style="flex: 1; min-width: 140px;" onclick="startMotorAutoCal()">▶ Start Auto-Cal</button>
+                        <button class="danger" style="flex: 1; min-width: 100px;" onclick="stopMotorAutoCal()">⏹ Stop</button>
+                        <button class="success" style="flex: 1.2; min-width: 160px; background: rgba(16, 185, 129, 0.25); border-color: var(--accent-green); color: var(--accent-green);" onclick="applyCalibrationCorrection()">💾 Apply &amp; Save Factor</button>
+                    </div>
+                </div>
+
+                <!-- Right: Calibration Gauges & Controls -->
+                <div>
+                    <!-- Big Metrics Display -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <div style="background: rgba(0,0,0,0.35); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); text-align: center;">
+                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Measured Avg RPM</div>
+                            <div id="cal-meas-rpm" style="font-size: 24px; font-weight: 700; color: var(--accent-green); font-family: var(--font-mono); margin-top: 4px;">0.0000</div>
+                            <div id="cal-jitter-std" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Jitter: &plusmn;0.0000 RPM</div>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.35); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); text-align: center;">
+                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Correction Factor</div>
+                            <div id="cal-sugg-factor" style="font-size: 24px; font-weight: 700; color: var(--accent-cyan); font-family: var(--font-mono); margin-top: 4px;">1.000000</div>
+                            <div id="cal-curr-factor" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Current: 1.000000</div>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar & Status -->
+                    <div style="margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">
+                            <span>Revolutions: <b id="cal-rev-count" style="color: var(--text-main);">0 / 30</b></span>
+                            <span id="cal-progress-pct" style="color: var(--accent-cyan);">0%</span>
+                        </div>
+                        <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden;">
+                            <div id="cal-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)); transition: width 0.3s;"></div>
+                        </div>
+                        <div id="cal-status-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px; font-style: italic;">Status: Idle (Ready to Calibrate)</div>
+                    </div>
+
+                    <!-- Calibration Settings -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+                        <div>
+                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Target RPM:</label>
+                            <input type="number" id="cal-target-rpm" value="9.0" step="0.1" min="1" max="30" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Rotations:</label>
+                            <select id="cal-target-revs" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
+                                <option value="20">20 Revs (Fast)</option>
+                                <option value="30" selected>30 Revs (Std)</option>
+                                <option value="50">50 Revs (Ultra)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Marker Shape:</label>
+                            <select id="cal-shape-mode" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
+                                <option value="auto" selected>Auto (Line / Dot)</option>
+                                <option value="line">Line (Wobble-Tolerant)</option>
+                                <option value="dot">Dot / Circle</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Color Mode:</label>
+                            <select id="cal-color-mode" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
+                                <option value="bright_dot" selected>Bright / White</option>
+                                <option value="green">Neon Green</option>
+                                <option value="cyan">Cyan / Blue</option>
+                                <option value="dark_dot">Dark Stripe/Dot</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Telemetry Logs Quick Download -->
+                    <div style="border-top: 1px solid var(--border-card); padding-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 12px; color: var(--text-muted);">📊 Telemetry CSV Logs:</span>
+                        <div style="display: flex; gap: 8px;">
+                            <button style="padding: 4px 10px; font-size: 11px;" onclick="loadTelemetryLogs()">🔄 Refresh</button>
+                            <button class="primary" style="padding: 4px 12px; font-size: 11px;" onclick="downloadLatestTelemetryLog()">📥 Download CSV</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FULL DEEP TELEMETRY MATRIX TABLE -->
+            <div style="margin-top: 16px; border-top: 1px solid var(--border-card); padding-top: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-muted);">⚡ Real-Time Hardware &amp; Sensor Telemetry Matrix</span>
+                    <span style="font-size: 11px; color: var(--accent-green);">Live Active Stream</span>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px;">
+                    <!-- Motor Telemetry -->
+                    <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px;">
+                        <div style="font-size: 11px; font-weight: 600; color: var(--accent-amber); margin-bottom: 6px;">⚙ MOTOR DRIVER TELEMETRY</div>
+                        <div style="font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-family: var(--font-mono);">
+                            <div style="color: var(--text-muted);">VIN Voltage: <b id="t-motor-vin" style="color: #fff;">12.18 V</b></div>
+                            <div style="color: var(--text-muted);">Driver: <b id="t-motor-driver" style="color: #fff;">TMC2209</b></div>
+                            <div style="color: var(--text-muted);">Stall Load: <b id="t-motor-load" style="color: #fff;">420</b></div>
+                            <div style="color: var(--text-muted);">Status: <b id="t-motor-status" style="color: #fff;">Running</b></div>
+                            <div style="color: var(--text-muted);">Step Freq: <b id="t-motor-freq" style="color: #fff;">480.0 Hz</b></div>
+                            <div style="color: var(--text-muted);">Temp Flag: <b id="t-motor-temp" style="color: #fff;">OK (&lt;120C)</b></div>
+                        </div>
+                    </div>
+
+                    <!-- Raspberry Pi Telemetry -->
+                    <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px;">
+                        <div style="font-size: 11px; font-weight: 600; color: var(--accent-cyan); margin-bottom: 6px;">🥧 RASPBERRY PI OS SENSORS</div>
+                        <div style="font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-family: var(--font-mono);">
+                            <div style="color: var(--text-muted);">CPU Temp: <b id="t-pi-temp" style="color: #fff;">46.2 °C</b></div>
+                            <div style="color: var(--text-muted);">Core Volts: <b id="t-pi-volts" style="color: #fff;">1.20 V</b></div>
+                            <div style="color: var(--text-muted);">ARM Clock: <b id="t-pi-clock" style="color: #fff;">2400 MHz</b></div>
+                            <div style="color: var(--text-muted);">CPU Load: <b id="t-pi-cpu" style="color: #fff;">14.2 %</b></div>
+                            <div style="color: var(--text-muted);">RAM Used: <b id="t-pi-ram" style="color: #fff;">320 MB</b></div>
+                            <div style="color: var(--text-muted);">Throttle: <b id="t-pi-throttle" style="color: var(--accent-green);">HEALTHY</b></div>
+                        </div>
+                    </div>
+
+                    <!-- Vision & Calibration Diagnostics -->
+                    <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px;">
+                        <div style="font-size: 11px; font-weight: 600; color: var(--accent-green); margin-bottom: 6px;">🎯 OPTICS &amp; VIAL WOBBLE TELEMETRY</div>
+                        <div style="font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-family: var(--font-mono);">
+                            <div style="color: var(--text-muted);">Marker Lock: <b id="t-vis-lock" style="color: var(--accent-green);">LOCKED</b></div>
+                            <div style="color: var(--text-muted);">Shape Type: <b id="t-vis-shape" style="color: var(--accent-cyan);">LINE</b></div>
+                            <div style="color: var(--text-muted);">Centroid Y: <b id="t-vis-y" style="color: #fff;">+0.042</b></div>
+                            <div style="color: var(--text-muted);">Vial Tilt: <b id="t-vis-tilt" style="color: #fff;">+0.0°</b></div>
+                            <div style="color: var(--text-muted);">Vial Wobble: <b id="t-vis-wobble" style="color: #fff;">0.0 px</b></div>
+                            <div style="color: var(--text-muted);">Confidence: <b id="t-vis-conf" style="color: #fff;">184 px²</b></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- 1. LIVE CAMERA & OPTICAL ALIGNMENT STUDIO -->
         <div class="card">
             <div class="card-title">
@@ -727,10 +872,54 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         }
         function playExpVideo(filename) {
             const vol = parseInt(document.getElementById('proj-vol-slider').value);
-            postAPI('/api/experimental/play', {video: filename, volume: vol});
+        // Motor Auto-Calibration
+        async function startMotorAutoCal() {
+            const rpm = parseFloat(document.getElementById('cal-target-rpm').value);
+            const revs = parseInt(document.getElementById('cal-target-revs').value);
+            const shape = document.getElementById('cal-shape-mode').value;
+            const color = document.getElementById('cal-color-mode').value;
+            const res = await postAPI('/api/calibrate/motor/start', {target_rpm: rpm, target_revs: revs, shape_mode: shape, color_mode: color});
+            showToast('Auto-Calibration Started at ' + rpm + ' RPM (' + revs + ' revs, ' + shape + ')');
         }
-        function stopExpVideo() {
-            postAPI('/api/experimental/stop');
+
+        async function stopMotorAutoCal() {
+            const res = await postAPI('/api/calibrate/motor/stop');
+            showToast('Calibration Stopped');
+        }
+
+        async function applyCalibrationCorrection() {
+            const res = await postAPI('/api/calibrate/motor/apply');
+            if (res && res.message) {
+                showToast(res.message);
+                if (res.correction_factor) {
+                    document.getElementById('cal-curr-factor').innerText = 'Current: ' + res.correction_factor.toFixed(6);
+                }
+            }
+        }
+
+        let latestTelemetryLogName = '';
+
+        async function loadTelemetryLogs() {
+            try {
+                const res = await fetch('/api/telemetry/logs');
+                const data = await res.json();
+                if (data.logs && data.logs.length > 0) {
+                    latestTelemetryLogName = data.logs[0].name;
+                    showToast('Found ' + data.logs.length + ' telemetry log files. Latest: ' + latestTelemetryLogName);
+                } else {
+                    showToast('No telemetry logs recorded yet.');
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function downloadLatestTelemetryLog() {
+            if (latestTelemetryLogName) {
+                window.open('/api/telemetry/logs/download?file=' + encodeURIComponent(latestTelemetryLogName), '_blank');
+            } else {
+                showToast('No telemetry logs recorded yet. Start a calibration run first!');
+            }
         }
 
         // Telemetry Polling (every 500ms)
@@ -779,6 +968,74 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                     soundsEnabled = data.sounds_enabled;
                     updateSoundsBtn();
                 }
+
+                // 2. Motor Calibration St                    if (calData && !calData.error) {
+                        document.getElementById('cal-meas-rpm').innerText = calData.measured_avg_rpm > 0 ? calData.measured_avg_rpm.toFixed(4) : '0.0000';
+                        document.getElementById('cal-jitter-std').innerHTML = 'Jitter: &plusmn;' + (calData.rpm_jitter_std || 0).toFixed(4) + ' RPM';
+                        document.getElementById('cal-sugg-factor').innerText = (calData.suggested_correction_factor || 1.0).toFixed(6);
+                        document.getElementById('cal-curr-factor').innerText = 'Current: ' + (calData.current_correction_factor || 1.0).toFixed(6);
+                        document.getElementById('cal-rev-count').innerText = calData.revolutions + ' / ' + calData.target_revolutions;
+                        const pct = calData.target_revolutions > 0 ? Math.min(100, Math.round((calData.revolutions / calData.target_revolutions) * 100)) : 0;
+                        document.getElementById('cal-progress-pct').innerText = pct + '%';
+                        document.getElementById('cal-progress-bar').style.width = pct + '%';
+                        document.getElementById('cal-status-text').innerText = 'Status: ' + (calData.status_message || 'Idle');
+                        
+                        const badge = document.getElementById('cal-status-badge');
+                        if (calData.is_active) {
+                            badge.innerText = 'CALIBRATING (' + pct + '%)';
+                            badge.style.color = 'var(--accent-green)';
+                        } else if (calData.calibration_complete) {
+                            badge.innerText = 'COMPLETED';
+                            badge.style.color = 'var(--accent-cyan)';
+                        } else {
+                            badge.innerText = 'READY';
+                            badge.style.color = 'var(--text-muted)';
+                        }
+                    }
+                } catch(ce) {}
+
+                // 3. Deep Real-Time Sensor Telemetry Matrix
+                try {
+                    const deepRes = await fetch('/api/telemetry/live');
+                    const deep = await deepRes.json();
+                    if (deep && !deep.error) {
+                        if (deep.pi) {
+                            document.getElementById('t-pi-temp').innerText = deep.pi.cpu_temp_c + ' °C';
+                            document.getElementById('t-pi-volts').innerText = deep.pi.core_voltage_v + ' V';
+                            document.getElementById('t-pi-clock').innerText = deep.pi.arm_clock_mhz + ' MHz';
+                            document.getElementById('t-pi-cpu').innerText = (deep.pi.cpu_usage_pct || 0) + ' %';
+                            document.getElementById('t-pi-ram').innerText = (deep.pi.ram_used_mb || 0) + ' MB';
+                            const warnings = deep.pi.throttle_warnings || [];
+                            const thEl = document.getElementById('t-pi-throttle');
+                            if (warnings.length === 0) {
+                                thEl.innerText = 'HEALTHY';
+                                thEl.style.color = 'var(--accent-green)';
+                            } else {
+                                thEl.innerText = warnings[0];
+                                thEl.style.color = 'var(--accent-rose)';
+                            }
+                        }
+                        if (deep.stepper) {
+                            document.getElementById('t-motor-vin').innerText = (deep.stepper.vin_voltage_v || 12.0) + ' V';
+                            document.getElementById('t-motor-driver').innerText = deep.stepper.driver || 'TMC2209';
+                            document.getElementById('t-motor-load').innerText = deep.stepper.stallguard_load || 0;
+                            document.getElementById('t-motor-status').innerText = deep.stepper.status || 'Idle';
+                            document.getElementById('t-motor-freq').innerText = (deep.stepper.step_frequency_hz || 0) + ' Hz';
+                            document.getElementById('t-motor-temp').innerText = deep.stepper.driver_temp_status || 'OK';
+                        }
+                        if (deep.calibration) {
+                            const locked = deep.calibration.marker_detected;
+                            const lockEl = document.getElementById('t-vis-lock');
+                            lockEl.innerText = locked ? 'LOCKED' : 'SEARCHING';
+                            lockEl.style.color = locked ? 'var(--accent-green)' : 'var(--accent-amber)';
+                            document.getElementById('t-vis-shape').innerText = (deep.calibration.detected_shape || 'NONE').toUpperCase();
+                            document.getElementById('t-vis-y').innerText = deep.calibration.marker_norm_y !== undefined ? (deep.calibration.marker_norm_y > 0 ? '+' : '') + deep.calibration.marker_norm_y.toFixed(3) : '0.000';
+                            document.getElementById('t-vis-tilt').innerText = (deep.calibration.line_tilt_deg !== undefined ? (deep.calibration.line_tilt_deg > 0 ? '+' : '') + deep.calibration.line_tilt_deg.toFixed(1) : '0.0') + '°';
+                            document.getElementById('t-vis-wobble').innerText = (deep.calibration.wobble_runout_px || 0).toFixed(1) + ' px';
+                            document.getElementById('t-vis-conf').innerText = (deep.calibration.confidence || 0) + ' px²';
+                        }
+                    }
+                } catch(de) {}
             } catch (e) {}
         }
 
@@ -871,6 +1128,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
 class WebConsoleHandler(BaseHTTPRequestHandler):
     hardware: HardwareController | None = None
     print_controller: Any | None = None
+    motor_calibrator: MotorCalibrator | None = None
 
     def log_message(self, format, *args):
         pass  # Suppress excessive HTTP access logs
@@ -1171,6 +1429,129 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 self.wfile.write(img_data)
                 return
 
+        # -------------------------------------------------------------------
+        # MOTOR CALIBRATION & DEEP TELEMETRY GET ENDPOINTS
+        # -------------------------------------------------------------------
+        if parsed.path == "/api/calibrate/motor/stream":
+            self.send_response(200)
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Cache-Control", "no-cache, private")
+            self.send_header("Pragma", "no-cache")
+            self.end_headers()
+
+            sim_angle = 0.0
+            try:
+                while True:
+                    frame_bgr = None
+                    if self.hardware and self.hardware.camera:
+                        raw_jpg = self.hardware.camera.get_jpeg_frame()
+                        if raw_jpg:
+                            arr = np.frombuffer(raw_jpg, dtype=np.uint8)
+                            frame_bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+                    # Fallback simulation if no camera hardware is attached
+                    if frame_bgr is None:
+                        frame_bgr = np.zeros((480, 640, 3), dtype=np.uint8)
+                        cv2.rectangle(frame_bgr, (160, 80), (480, 400), (35, 45, 55), -1)
+                        cv2.rectangle(frame_bgr, (280, 80), (360, 400), (65, 65, 65), -1)
+                        if self.motor_calibrator and self.motor_calibrator.is_active:
+                            sim_speed = self.motor_calibrator.target_rpm * 360.0 / 60.0
+                            sim_angle = (sim_angle + sim_speed * 0.033) % 360.0
+                            if sim_angle < 180.0:
+                                rad = math.radians(sim_angle)
+                                dot_y = int(240 - 120 * math.cos(rad))
+                                cv2.circle(frame_bgr, (320, dot_y), 11, (255, 255, 255), -1)
+                        else:
+                            cv2.circle(frame_bgr, (320, 240), 11, (255, 255, 255), -1)
+
+                    if self.motor_calibrator:
+                        annotated, _ = self.motor_calibrator.process_frame(frame_bgr)
+                    else:
+                        annotated = frame_bgr
+
+                    ret, enc = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    if ret:
+                        jpg_bytes = enc.tobytes()
+                        self.wfile.write(b"--frame\r\n")
+                        self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                        self.wfile.write(f"Content-Length: {len(jpg_bytes)}\r\n\r\n".encode("utf-8"))
+                        self.wfile.write(jpg_bytes)
+                        self.wfile.write(b"\r\n")
+
+                    time.sleep(0.033)  # ~30 FPS
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+
+        if parsed.path == "/api/calibrate/motor/status":
+            if self.motor_calibrator:
+                cur_factor = 1.0
+                if self.hardware and self.hardware.stepper:
+                    cur_factor = getattr(self.hardware.stepper, "correction_factor", 1.0)
+                self._send_json({
+                    "is_active": self.motor_calibrator.is_active,
+                    "target_rpm": self.motor_calibrator.target_rpm,
+                    "revolutions": self.motor_calibrator.revolutions_completed,
+                    "target_revolutions": self.motor_calibrator.target_revolutions,
+                    "measured_avg_rpm": round(self.motor_calibrator.measured_avg_rpm, 4),
+                    "rpm_jitter_std": round(self.motor_calibrator.rpm_jitter_std, 4),
+                    "suggested_correction_factor": self.motor_calibrator.suggested_correction_factor,
+                    "current_correction_factor": cur_factor,
+                    "calibration_complete": self.motor_calibrator.calibration_complete,
+                    "status_message": self.motor_calibrator.status_message,
+                    "last_log_path": str(self.motor_calibrator.last_log_path) if self.motor_calibrator.last_log_path else None,
+                    "latest_sample": self.motor_calibrator.latest_sample,
+                })
+            else:
+                self._send_json({"error": "Motor calibrator not initialized"}, status=500)
+            return
+
+        if parsed.path == "/api/telemetry/live":
+            pi = get_pi_system_telemetry()
+            stepper = self.hardware.stepper.get_telemetry() if (self.hardware and self.hardware.stepper) else {}
+            cal = self.motor_calibrator.latest_sample if self.motor_calibrator else {}
+            self._send_json({
+                "pi": pi,
+                "stepper": stepper,
+                "calibration": cal,
+                "timestamp": time.time(),
+            })
+            return
+
+        if parsed.path == "/api/telemetry/logs":
+            log_dir = Path.home() / "OpenCAL-alternative" / "telemetry_logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            files = []
+            try:
+                for f in sorted(log_dir.glob("*.csv"), key=os.path.getmtime, reverse=True):
+                    files.append({
+                        "name": f.name,
+                        "size": f"{f.stat().st_size / 1024:.1f} KB",
+                        "time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(f.stat().st_mtime))
+                    })
+            except Exception as e:
+                print(f"Error listing telemetry logs: {e}")
+            self._send_json({"logs": files})
+            return
+
+        if parsed.path.startswith("/api/telemetry/logs/download"):
+            qs = parse_qs(parsed.query)
+            filename = qs.get("file", [""])[0]
+            log_dir = Path.home() / "OpenCAL-alternative" / "telemetry_logs"
+            target_f = log_dir / Path(filename).name
+            if target_f.exists() and target_f.is_file():
+                self.send_response(200)
+                self.send_header("Content-Type", "text/csv")
+                self.send_header("Content-Disposition", f'attachment; filename="{target_f.name}"')
+                self.send_header("Content-Length", str(target_f.stat().st_size))
+                self.end_headers()
+                with open(target_f, "rb") as f:
+                    self.wfile.write(f.read())
+                return
+            else:
+                self.send_error(404, "Log file not found")
+                return
+
         self._send_json({"error": "Not Found"}, status=404)
 
     def do_POST(self):
@@ -1222,6 +1603,42 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/auth/verify":
             token = data.get("token", "")
             self._send_json({"valid": token in AUTH_TOKENS})
+            return
+
+        # -------------------------------------------------------------------
+        # MOTOR AUTO-CALIBRATION POST ENDPOINTS
+        # -------------------------------------------------------------------
+        if parsed.path == "/api/calibrate/motor/start":
+            target_rpm = float(data.get("target_rpm", 9.0))
+            target_revs = int(data.get("target_revs", 30))
+            color_mode = str(data.get("color_mode", "bright_dot"))
+            shape_mode = str(data.get("shape_mode", "auto"))
+            if self.motor_calibrator:
+                self.motor_calibrator.start_calibration(
+                    target_rpm=target_rpm, 
+                    target_revs=target_revs, 
+                    color_mode=color_mode,
+                    shape_mode=shape_mode
+                )
+                self._send_json({"message": f"Auto-calibration started at {target_rpm} RPM ({target_revs} revs, {shape_mode})!"})
+            else:
+                self._send_json({"error": "Motor calibrator unavailable"}, status=500)
+            return
+
+        if parsed.path == "/api/calibrate/motor/stop":
+            if self.motor_calibrator:
+                self.motor_calibrator.stop_calibration()
+                self._send_json({"message": "Auto-calibration stopped."})
+            else:
+                self._send_json({"error": "Motor calibrator unavailable"}, status=500)
+            return
+
+        if parsed.path == "/api/calibrate/motor/apply":
+            if self.motor_calibrator:
+                res = self.motor_calibrator.apply_correction()
+                self._send_json(res)
+            else:
+                self._send_json({"error": "Motor calibrator unavailable"}, status=500)
             return
 
         # 1. PRINT JOB CONTROLS
@@ -1571,6 +1988,8 @@ def start_web_console_thread(print_controller_or_hardware: Any, host="0.0.0.0", 
         WebConsoleHandler.hardware = print_controller_or_hardware.hardware
     else:
         WebConsoleHandler.hardware = print_controller_or_hardware
+
+    WebConsoleHandler.motor_calibrator = MotorCalibrator(WebConsoleHandler.hardware)
 
     server = ThreadingHTTPServer((host, port), WebConsoleHandler)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)

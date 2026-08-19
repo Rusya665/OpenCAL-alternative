@@ -4,6 +4,7 @@
   },
   "stepper_motor": {
     "driver_mode": "tic_usb",
+    "correction_factor": 1.0,
     "A_pin": 12,
     "B_pin": 13,
     "enable_pin": 27,
