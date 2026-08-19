@@ -314,9 +314,10 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                             <img id="cal-cam-stream" class="cam-feed" src="" alt="Calibrator Vision HUD Stream" style="height: 100%; object-fit: contain;">
                         </div>
                         <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
-                            <button class="primary" style="flex: 1; min-width: 140px;" onclick="startMotorAutoCal()">▶ Start Auto-Cal</button>
-                            <button class="danger" style="flex: 1; min-width: 100px;" onclick="stopMotorAutoCal()">⏹ Stop</button>
-                            <button class="success" style="flex: 1.2; min-width: 160px; background: rgba(16, 185, 129, 0.25); border-color: var(--accent-green); color: var(--accent-green);" onclick="applyCalibrationCorrection()">💾 Apply &amp; Save Factor</button>
+                            <button class="primary" style="flex: 1; min-width: 130px;" onclick="startMotorAutoCal()">▶ Start Auto-Cal</button>
+                            <button class="danger" style="flex: 0.8; min-width: 90px;" onclick="stopMotorAutoCal()">⏹ Stop</button>
+                            <button class="success" style="flex: 1.2; min-width: 150px; background: rgba(16, 185, 129, 0.25); border-color: var(--accent-green); color: var(--accent-green);" onclick="applyCalibrationCorrection()">💾 Apply Calculated</button>
+                            <button class="secondary" style="flex: 1.2; min-width: 150px; background: rgba(245, 158, 11, 0.2); border-color: var(--accent-amber); color: var(--accent-amber);" onclick="revertCalibrationCorrection()">⏪ Return Previous (1.0)</button>
                         </div>
                     </div>
 
@@ -941,6 +942,18 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 showToast(res.message);
                 if (res.correction_factor) {
                     document.getElementById('cal-curr-factor').innerText = 'Current: ' + res.correction_factor.toFixed(6);
+                }
+            }
+        }
+
+        async function revertCalibrationCorrection() {
+            if (confirm('Revert motor back to uncompensated base speed (Factor = 1.000000)?')) {
+                const res = await postAPI('/api/calibrate/motor/revert', {factor: 1.0});
+                if (res && res.message) {
+                    showToast(res.message);
+                    if (res.correction_factor !== undefined) {
+                        document.getElementById('cal-curr-factor').innerText = 'Current: ' + res.correction_factor.toFixed(6);
+                    }
                 }
             }
         }
@@ -1698,6 +1711,15 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/calibrate/motor/apply":
             if self.motor_calibrator:
                 res = self.motor_calibrator.apply_correction()
+                self._send_json(res)
+            else:
+                self._send_json({"error": "Motor calibrator unavailable"}, status=500)
+            return
+
+        if parsed.path == "/api/calibrate/motor/revert":
+            if self.motor_calibrator:
+                factor = float(data.get("factor", 1.0))
+                res = self.motor_calibrator.revert_correction(factor)
                 self._send_json(res)
             else:
                 self._send_json({"error": "Motor calibrator unavailable"}, status=500)

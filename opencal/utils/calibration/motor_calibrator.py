@@ -483,3 +483,31 @@ class MotorCalibrator:
             }
         except Exception as e:
             return {"success": False, "message": f"Failed to save config.json: {e}"}
+
+    def revert_correction(self, factor: float = 1.0) -> dict[str, Any]:
+        """Reverts motor correction factor back to uncompensated default (1.000000) or specified value."""
+        target_factor = float(factor)
+        if self.hw and hasattr(self.hw, "stepper") and self.hw.stepper:
+            try:
+                self.hw.stepper.set_correction_factor(target_factor)
+            except Exception as e:
+                print(f"Error resetting stepper correction factor: {e}")
+
+        try:
+            with open(CFG_PATH, "r") as f:
+                cfg_data = json.load(f)
+            
+            if "stepper_motor" not in cfg_data:
+                cfg_data["stepper_motor"] = {}
+            cfg_data["stepper_motor"]["correction_factor"] = target_factor
+
+            with open(CFG_PATH, "w") as f:
+                json.dump(cfg_data, f, indent=2)
+
+            return {
+                "success": True,
+                "message": f"Motor reset to uncompensated base speed (factor = {target_factor:.6f})!",
+                "correction_factor": target_factor
+            }
+        except Exception as e:
+            return {"success": False, "message": f"Failed to update config.json: {e}"}
