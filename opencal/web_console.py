@@ -309,8 +309,9 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px;">
                     <!-- Left: Live Vision Feed & HUD -->
                     <div>
-                        <div class="cam-wrapper" style="border: 1px solid rgba(6, 182, 212, 0.3); height: 280px; position: relative;">
-                            <img id="cal-cam-stream" class="cam-feed" src="" alt="Calibrator Vision HUD Stream" style="height: 100%;">
+                        <div class="cam-wrapper" style="border: 1px solid rgba(6, 182, 212, 0.3); height: 420px; position: relative;">
+                            <button onclick="toggleCamFullscreen('cal-cam-stream')" style="position: absolute; top: 10px; right: 10px; padding: 6px 12px; font-size: 12px; background: rgba(10,15,30,0.85); border: 1px solid var(--accent-cyan); border-radius: 6px; color: var(--accent-cyan); z-index: 10; cursor: pointer;">⛶ Fullscreen HUD</button>
+                            <img id="cal-cam-stream" class="cam-feed" src="" alt="Calibrator Vision HUD Stream" style="height: 100%; object-fit: contain;">
                         </div>
                         <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
                             <button class="primary" style="flex: 1; min-width: 140px;" onclick="startMotorAutoCal()">▶ Start Auto-Cal</button>
@@ -904,6 +905,18 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 btn.style.color = 'var(--accent-cyan)';
                 btn.style.borderColor = 'var(--accent-cyan)';
                 img.src = '';
+            }
+        }
+
+        // Toggle Camera Fullscreen
+        function toggleCamFullscreen(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (!document.fullscreenElement) {
+                if (el.requestFullscreen) el.requestFullscreen();
+                else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
             }
         }
 

@@ -138,17 +138,29 @@ class MotorCalibrator:
 
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
         if self.color_filter == "red":
-            # Red wraps around HSV 0 and 180 degrees - high saturation on white tape
-            mask1 = cv2.inRange(hsv, np.array([0, 55, 45]), np.array([14, 255, 255]))
-            mask2 = cv2.inRange(hsv, np.array([165, 55, 45]), np.array([180, 255, 255]))
-            mask = cv2.bitwise_or(mask1, mask2)
+            # Dual HSV Mask (Hue 0-15 & 165-180) with moderate saturation
+            mask_hsv1 = cv2.inRange(hsv, np.array([0, 45, 35]), np.array([16, 255, 255]))
+            mask_hsv2 = cv2.inRange(hsv, np.array([165, 45, 35]), np.array([180, 255, 255]))
+            mask_hsv = cv2.bitwise_or(mask_hsv1, mask_hsv2)
+
+            # Excess Red Color Index: Red marker absorbs G & B (R - G > 20 and R - B > 20)
+            roi_i16 = roi.astype(np.int16)
+            b_ch, g_ch, r_ch = roi_i16[:, :, 0], roi_i16[:, :, 1], roi_i16[:, :, 2]
+            diff_rg = r_ch - g_ch
+            diff_rb = r_ch - b_ch
+            mask_rgb = ((diff_rg > 18) & (diff_rb > 18) & (r_ch > 50)).astype(np.uint8) * 255
+
+            mask = cv2.bitwise_and(mask_hsv, mask_rgb)
+            # Morphological smoothing to connect drawn line segments and remove speckles
+            k_rect = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 3))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_rect)
         elif self.color_filter == "green":
             mask = cv2.inRange(hsv, np.array([35, 70, 70]), np.array([85, 255, 255]))
         elif self.color_filter == "cyan":
             mask = cv2.inRange(hsv, np.array([80, 70, 70]), np.array([105, 255, 255]))
         elif self.color_filter == "dark_dot":
             gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            _, mask = cv2.threshold(gray, 45, 255, cv2.THRESH_BINARY_INV)
+            _, mask = cv2.threshold(gray, 55, 255, cv2.THRESH_BINARY_INV)
         else:  # "bright_dot" / white / fluorescent
             gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
             _, mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
@@ -157,23 +169,25 @@ class MotorCalibrator:
                 _, mask = cv2.threshold(gray, thresh_val, 255, cv2.THRESH_BINARY)
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # Accept both compact blobs (dots) and elongated contours (lines)
-        valid_contours = [c for c in contours if 15 < cv2.contourArea(c) < (roi_w * roi_h * 0.40)]
+        # Filter valid contours (size between 10px and 45% of ROI)
+        valid_contours = [c for c in contours if 10 < cv2.contourArea(c) < (roi_w * roi_h * 0.45)]
 
         if valid_contours:
             # Score contours based on shape mode preference
-            if self.marker_shape_mode == "line":
-                # Prefer elongated horizontal lines: higher width / aspect ratio
+            if self.marker_shape_mode == "line" or (self.color_filter == "red" and self.marker_shape_mode != "dot"):
+                # Prefer elongated horizontal lines: higher width and aspect ratio (bw / bh)
                 def _line_score(c):
                     bx, by, bw, bh = cv2.boundingRect(c)
-                    return cv2.contourArea(c) * (bw / max(bh, 1.0))
+                    aspect = bw / max(float(bh), 1.0)
+                    length_bonus = min(bw / 20.0, 5.0)
+                    return cv2.contourArea(c) * (aspect ** 1.8) * length_bonus
                 best_c = max(valid_contours, key=_line_score)
             elif self.marker_shape_mode == "dot":
                 # Prefer circular/compact blobs
                 def _dot_score(c):
                     bx, by, bw, bh = cv2.boundingRect(c)
                     ar = max(bw, bh) / max(1.0, min(bw, bh))
-                    return cv2.contourArea(c) / (ar**2)
+                    return cv2.contourArea(c) / (ar ** 2)
                 best_c = max(valid_contours, key=_dot_score)
             else:  # "auto"
                 best_c = max(valid_contours, key=cv2.contourArea)
@@ -191,7 +205,7 @@ class MotorCalibrator:
                 bx, by, bw, bh = cv2.boundingRect(best_c)
                 aspect_ratio = bw / max(1.0, bh)
 
-                if bw >= 24 and aspect_ratio >= 2.0:
+                if bw >= 20 and aspect_ratio >= 1.8:
                     shape_type = "line"
                     # Fit 2D line to contour points
                     [vx, vy, x0, y0] = cv2.fitLine(best_c, cv2.DIST_L2, 0, 0.01, 0.01)
@@ -328,10 +342,14 @@ class MotorCalibrator:
         h, w = out.shape[:2]
 
         # 1. Draw ROI Box & Centerline
-        cv2.rectangle(out, (rx1, ry1), (rx2, ry2), (0, 255, 255), 1)
+        cv2.rectangle(out, (rx1, ry1), (rx2, ry2), (0, 255, 255), 2)
         mid_y = ry1 + (ry2 - ry1) // 2
-        cv2.line(out, (rx1, mid_y), (rx2, mid_y), (0, 165, 255), 1, cv2.LINE_AA)
-        cv2.putText(out, "CENTERLINE CROSSING PLANE", (rx1 + 10, mid_y - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 165, 255), 1)
+        cv2.line(out, (rx1, mid_y), (rx2, mid_y), (0, 140, 255), 2, cv2.LINE_AA)
+        
+        # Centerline Label with filled background tag
+        tag_x, tag_y = rx1 + 10, mid_y - 8
+        cv2.rectangle(out, (tag_x - 4, tag_y - 18), (tag_x + 240, tag_y + 6), (15, 20, 30), -1)
+        cv2.putText(out, "CENTERLINE CROSSING PLANE", (tag_x, tag_y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 165, 255), 2, cv2.LINE_AA)
 
         # 2. Draw Detected Marker (Line vs Dot)
         if marker_detected:
@@ -340,55 +358,62 @@ class MotorCalibrator:
                 (p1x, p1y), (p2x, p2y) = line_pts
                 gp1 = (rx1 + p1x, ry1 + p1y)
                 gp2 = (rx1 + p2x, ry1 + p2y)
-                # Draw thick axial line stripe
-                cv2.line(out, gp1, gp2, (0, 255, 0), 3, cv2.LINE_AA)
-                cv2.circle(out, gp1, 4, (0, 200, 255), -1)
-                cv2.circle(out, gp2, 4, (0, 200, 255), -1)
-                cv2.circle(out, (gx, gy), 5, (0, 0, 255), -1)
-                cv2.putText(out, f"LINE [L={int(line_len)}px, Tilt={line_tilt:+.1f} deg]", (gx - 50, gy - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1, cv2.LINE_AA)
+                # Draw thick high-contrast line stripe
+                cv2.line(out, gp1, gp2, (0, 255, 0), 4, cv2.LINE_AA)
+                cv2.circle(out, gp1, 6, (0, 220, 255), -1)
+                cv2.circle(out, gp2, 6, (0, 220, 255), -1)
+                cv2.circle(out, (gx, gy), 7, (0, 0, 255), -1)
+                
+                # Filled badge for line text
+                label = f"LINE [L={int(line_len)}px, Tilt={line_tilt:+.1f} deg]"
+                (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
+                cv2.rectangle(out, (gx - lw // 2 - 6, gy - 32), (gx + lw // 2 + 6, gy - 6), (10, 25, 10), -1)
+                cv2.rectangle(out, (gx - lw // 2 - 6, gy - 32), (gx + lw // 2 + 6, gy - 6), (0, 255, 0), 1)
+                cv2.putText(out, label, (gx - lw // 2, gy - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 128), 2, cv2.LINE_AA)
             else:
                 # Dot / circle marker
-                r = max(6, int(line_len / 2))
-                cv2.circle(out, (gx, gy), r, (0, 255, 0), 2)
-                cv2.circle(out, (gx, gy), 3, (0, 0, 255), -1)
-                cv2.putText(out, f"DOT [r={r}px, y={sample['marker_norm_y']:+.2f}]", (gx + 16, gy + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1, cv2.LINE_AA)
+                r = max(8, int(line_len / 2))
+                cv2.circle(out, (gx, gy), r, (0, 255, 0), 3)
+                cv2.circle(out, (gx, gy), 4, (0, 0, 255), -1)
+                label = f"DOT [r={r}px, y={sample['marker_norm_y']:+.2f}]"
+                cv2.rectangle(out, (gx + 12, gy - 16), (gx + 220, gy + 10), (10, 25, 10), -1)
+                cv2.putText(out, label, (gx + 16, gy + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
 
-        # 3. Top Telemetry Glass Bar
+        # 3. Top Telemetry Glass Bar (Larger & Bolder)
         overlay = out.copy()
-        cv2.rectangle(overlay, (0, 0), (w, 64), (10, 15, 25), -1)
-        cv2.addWeighted(overlay, 0.75, out, 0.25, 0, out)
+        cv2.rectangle(overlay, (0, 0), (w, 82), (8, 12, 22), -1)
+        cv2.addWeighted(overlay, 0.85, out, 0.15, 0, out)
 
-        status_color = (0, 255, 128) if self.is_active else ((0, 255, 255) if self.calibration_complete else (200, 200, 200))
-        cv2.putText(out, f"OPENCAL AUTO-TUNER: {self.status_message}", (14, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.52, status_color, 1, cv2.LINE_AA)
+        status_color = (0, 255, 128) if self.is_active else ((0, 255, 255) if self.calibration_complete else (220, 220, 220))
+        cv2.putText(out, f"OPENCAL AUTO-TUNER: {self.status_message}", (14, 28), cv2.FONT_HERSHEY_DUPLEX, 0.72, status_color, 2, cv2.LINE_AA)
 
         metrics_text = (
-            f"TARGET: {self.target_rpm:.2f} RPM | "
-            f"MEASURED: {self.measured_avg_rpm:.4f} RPM | "
-            f"JITTER: +- {self.rpm_jitter_std:.4f} | "
-            f"REV: {self.revolutions_completed}/{self.target_revolutions} | "
+            f"TARGET: {self.target_rpm:.1f} RPM  |  "
+            f"MEASURED: {self.measured_avg_rpm:.4f} RPM  |  "
+            f"REV: {self.revolutions_completed}/{self.target_revolutions}  |  "
             f"CORR: {self.suggested_correction_factor:.6f}"
         )
-        cv2.putText(out, metrics_text, (14, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(out, metrics_text, (14, 64), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
 
-        # 4. Bottom Hardware & Wobble Status Bar
+        # 4. Bottom Hardware & Wobble Status Bar (Larger & Bolder)
         bot_overlay = out.copy()
-        cv2.rectangle(bot_overlay, (0, h - 36), (w, h), (10, 15, 25), -1)
-        cv2.addWeighted(bot_overlay, 0.75, out, 0.25, 0, out)
+        cv2.rectangle(bot_overlay, (0, h - 46), (w, h), (8, 12, 22), -1)
+        cv2.addWeighted(bot_overlay, 0.85, out, 0.15, 0, out)
 
         hw_text = (
-            f"PI: {sample.get('cpu_temp_c', 0)}C @ {sample.get('core_voltage_v', 0)}V | "
-            f"MOTOR: {sample.get('motor_vin_v', 0)}V | "
-            f"WOBBLE: Runout={sample.get('wobble_runout_px', 0)}px, Tilt={sample.get('line_tilt_deg', 0):+.1f} deg | "
+            f"PI: {sample.get('cpu_temp_c', 0)}C @ {sample.get('core_voltage_v', 0)}V  |  "
+            f"MOTOR: {sample.get('motor_vin_v', 0)}V  |  "
+            f"RUNOUT: {sample.get('wobble_runout_px', 0)}px, TILT: {sample.get('line_tilt_deg', 0):+.1f} deg  |  "
             f"SHAPE: {shape_type.upper()}"
         )
-        cv2.putText(out, hw_text, (14, h - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (180, 220, 255), 1, cv2.LINE_AA)
+        cv2.putText(out, hw_text, (14, h - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (180, 220, 255), 2, cv2.LINE_AA)
 
         # 5. Mini Realtime Trajectory Waveform (Bottom Right)
         if len(self.trajectory_history) >= 2:
-            gw, gh = 180, 60
-            gx1, gy1 = w - gw - 15, h - gh - 45
-            cv2.rectangle(out, (gx1, gy1), (gx1 + gw, gy1 + gh), (20, 30, 45), -1)
-            cv2.rectangle(out, (gx1, gy1), (gx1 + gw, gy1 + gh), (80, 100, 130), 1)
+            gw, gh = 200, 70
+            gx1, gy1 = w - gw - 15, h - gh - 55
+            cv2.rectangle(out, (gx1, gy1), (gx1 + gw, gy1 + gh), (15, 22, 35), -1)
+            cv2.rectangle(out, (gx1, gy1), (gx1 + gw, gy1 + gh), (80, 120, 160), 1)
             cv2.line(out, (gx1, gy1 + gh // 2), (gx1 + gw, gy1 + gh // 2), (60, 80, 100), 1)
 
             pts = []
@@ -401,7 +426,7 @@ class MotorCalibrator:
 
             for i in range(1, len(pts)):
                 cv2.line(out, pts[i - 1], pts[i], (0, 255, 255), 2, cv2.LINE_AA)
-            cv2.putText(out, "Y-WAVEFORM", (gx1 + 6, gy1 + 14), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (160, 200, 255), 1)
+            cv2.putText(out, "Y-WAVEFORM", (gx1 + 8, gy1 + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 210, 255), 1)
 
         return out
 
