@@ -224,12 +224,12 @@ class MotorCalibrator:
         gray_gate = cv2.cvtColor(gate_img, cv2.COLOR_BGR2GRAY)
 
         if self.color_filter in ("dark_line", "dark_dot", "black", "black_line"):
-            k_bh = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-            blackhat = cv2.morphologyEx(gray_gate, cv2.MORPH_BLACKHAT, k_bh)
-            _, mask_bh = cv2.threshold(blackhat, 16, 255, cv2.THRESH_BINARY)
-            mask_dark = (gray_gate < 78).astype(np.uint8) * 255
-            mask = cv2.bitwise_or(mask_bh, mask_dark)
-            k_clean = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
+            # Illumination-invariant absorption detection (works in red LED, white LED, or ambient)
+            max_ch = np.max(gate_img, axis=2)
+            mean_illum = float(np.mean(max_ch))
+            dark_thresh = min(120, max(30, int(mean_illum * 0.55)))
+            mask = (max_ch < dark_thresh).astype(np.uint8) * 255
+            k_clean = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 3))
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k_clean)
         elif self.color_filter == "red":
             hsv_gate = cv2.cvtColor(gate_img, cv2.COLOR_BGR2HSV)
