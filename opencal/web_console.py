@@ -375,11 +375,11 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                             <div>
                                 <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Color Mode:</label>
                                 <select id="cal-color-mode" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
-                                    <option value="red" selected>🔴 Red Line (on White Tape)</option>
-                                    <option value="bright_dot">⚪ Bright / White</option>
+                                    <option value="dark_line" selected>⚫ Black / Dark Line (on White Tape)</option>
+                                    <option value="red">🔴 Red Line (on White Tape)</option>
+                                    <option value="bright_dot">⚪ Bright / White Dot</option>
                                     <option value="green">🟢 Neon Green</option>
                                     <option value="cyan">🔵 Cyan / Blue</option>
-                                    <option value="dark_dot">⚫ Dark Stripe / Dot</option>
                                 </select>
                             </div>
                         </div>
@@ -1008,8 +1008,10 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         }
 
         async function startFindMarker() {
-            const res = await postAPI('/api/stepper/find_marker', {rpm: 4.5, max_revs: 2.0});
-            showToast('Searching for marker (rotating max 2 revs)...');
+            const color = document.getElementById('cal-color-mode').value;
+            const shape = document.getElementById('cal-shape-mode').value;
+            const res = await postAPI('/api/stepper/find_marker', {rpm: 4.5, max_revs: 2.0, color_mode: color, shape_mode: shape});
+            showToast('Searching for ' + color.replace('_', ' ') + ' marker (rotating max 2 revs)...');
         }
 
         async function stopFindMarker() {
@@ -1833,7 +1835,9 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 rpm = float(data.get("rpm", 4.5))
                 max_revs = float(data.get("max_revs", 2.0))
                 direction = str(data.get("direction", "CW"))
-                res = self.marker_finder.start(rpm, max_revs, direction)
+                color_mode = str(data.get("color_mode", "dark_line"))
+                shape_mode = str(data.get("shape_mode", "line"))
+                res = self.marker_finder.start(rpm, max_revs, direction, color_mode, shape_mode)
                 self._send_json(res)
             else:
                 self._send_json({"error": "Marker finder unavailable"}, status=500)

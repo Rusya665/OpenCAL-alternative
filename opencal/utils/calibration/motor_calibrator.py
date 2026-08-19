@@ -29,10 +29,10 @@ class MotorCalibrator:
         # Calibration Configuration
         self.target_rpm: float = 9.0
         self.target_revolutions: int = 30
-        self.color_filter: str = "bright_dot"  # "bright_dot", "green", "cyan", "dark_dot"
+        self.color_filter: str = "dark_line"  # "dark_line", "red", "green", "cyan", "bright_dot"
         
         # Marker Shape & Wobble Tracking
-        self.marker_shape_mode: str = "auto"  # "auto", "line", "dot"
+        self.marker_shape_mode: str = "line"  # "line", "dot", "auto"
         self.detected_shape_type: str = "none"  # "line", "dot", "none"
         self.line_tilt_deg: float = 0.0
         self.line_length_px: float = 0.0
@@ -63,7 +63,7 @@ class MotorCalibrator:
         self.last_log_path: Path | None = None
         self.latest_sample: dict[str, Any] = {}
 
-    def start_calibration(self, target_rpm: float = 9.0, target_revs: int = 30, color_mode: str = "bright_dot", shape_mode: str = "auto"):
+    def start_calibration(self, target_rpm: float = 9.0, target_revs: int = 30, color_mode: str = "dark_line", shape_mode: str = "line"):
         with self._lock:
             self.target_rpm = float(target_rpm)
             self.target_revolutions = int(target_revs)
@@ -137,36 +137,43 @@ class MotorCalibrator:
         line_pts = None
 
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        if self.color_filter == "red":
-            # Dual HSV Mask (Hue 0-15 & 165-180) with moderate saturation
-            mask_hsv1 = cv2.inRange(hsv, np.array([0, 45, 35]), np.array([16, 255, 255]))
-            mask_hsv2 = cv2.inRange(hsv, np.array([165, 45, 35]), np.array([180, 255, 255]))
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+
+        if self.color_filter in ("dark_line", "dark_dot", "black", "black_line"):
+            # Black / Dark drawn pen line on bright white tape:
+            # 1. Blackhat transform extracts local dark lines thinner than 21px
+            k_bh = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 21))
+            blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, k_bh)
+            _, mask_bh = cv2.threshold(blackhat, 24, 255, cv2.THRESH_BINARY)
+            # 2. Direct dark threshold (strictly excludes white glare!)
+            mask_dark = ((gray < 90) & (gray > 6)).astype(np.uint8) * 255
+            mask = cv2.bitwise_or(mask_bh, mask_dark)
+            # Smooth along horizontal line axis
+            k_rect = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 3))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_rect)
+        elif self.color_filter == "red":
+            # Dual HSV Mask (Hue 0-14 & 168-180) with high saturation
+            mask_hsv1 = cv2.inRange(hsv, np.array([0, 60, 40]), np.array([14, 255, 255]))
+            mask_hsv2 = cv2.inRange(hsv, np.array([168, 60, 40]), np.array([180, 255, 255]))
             mask_hsv = cv2.bitwise_or(mask_hsv1, mask_hsv2)
 
-            # Excess Red Color Index: Red marker absorbs G & B (R - G > 20 and R - B > 20)
+            # Excess Red Color Index: Red marker absorbs G & B (R - G > 30 and R - B > 25)
+            # (Rejects white specular reflection because white has R - G ~ 0 and R - B ~ 0)
             roi_i16 = roi.astype(np.int16)
             b_ch, g_ch, r_ch = roi_i16[:, :, 0], roi_i16[:, :, 1], roi_i16[:, :, 2]
             diff_rg = r_ch - g_ch
             diff_rb = r_ch - b_ch
-            mask_rgb = ((diff_rg > 18) & (diff_rb > 18) & (r_ch > 50)).astype(np.uint8) * 255
+            mask_rgb = ((diff_rg > 30) & (diff_rb > 25) & (r_ch > 70)).astype(np.uint8) * 255
 
             mask = cv2.bitwise_and(mask_hsv, mask_rgb)
-            # Morphological smoothing to connect drawn line segments and remove speckles
             k_rect = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 3))
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_rect)
         elif self.color_filter == "green":
             mask = cv2.inRange(hsv, np.array([35, 70, 70]), np.array([85, 255, 255]))
         elif self.color_filter == "cyan":
             mask = cv2.inRange(hsv, np.array([80, 70, 70]), np.array([105, 255, 255]))
-        elif self.color_filter == "dark_dot":
-            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            _, mask = cv2.threshold(gray, 55, 255, cv2.THRESH_BINARY_INV)
         else:  # "bright_dot" / white / fluorescent
-            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            _, mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
-            if cv2.countNonZero(mask) < 10:
-                thresh_val = max(170, int(np.percentile(gray, 97)))
-                _, mask = cv2.threshold(gray, thresh_val, 255, cv2.THRESH_BINARY)
+            _, mask = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY)
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         # Strict contour validation: a drawn line or dot is compact, not a giant ambient blob!
@@ -177,7 +184,7 @@ class MotorCalibrator:
                 continue
             bx, by, bw, bh = cv2.boundingRect(c)
             # Rejection: Marker lines are horizontal and thin; dots are small
-            if self.marker_shape_mode == "line" or (self.color_filter == "red" and self.marker_shape_mode != "dot"):
+            if self.marker_shape_mode == "line" or (self.color_filter in ("dark_line", "black", "red") and self.marker_shape_mode != "dot"):
                 if bh > 40:  # line cannot be taller than 40px
                     continue
                 if bw < 15:  # line must have minimal width
@@ -194,7 +201,7 @@ class MotorCalibrator:
 
         if valid_contours:
             # Score contours based on shape mode preference
-            if self.marker_shape_mode == "line" or (self.color_filter == "red" and self.marker_shape_mode != "dot"):
+            if self.marker_shape_mode == "line" or (self.color_filter in ("dark_line", "black", "red") and self.marker_shape_mode != "dot"):
                 def _line_score(c):
                     bx, by, bw, bh = cv2.boundingRect(c)
                     aspect = bw / max(float(bh), 1.0)
@@ -620,12 +627,15 @@ class MarkerFinder:
         self.state: str = "IDLE"  # "IDLE" | "SEARCHING" | "FOUND_CENTERED" | "NOT_FOUND" | "STOPPED"
         self.status_message: str = "Idle (Ready to Find Marker)"
 
-    def start(self, rpm: float = 4.5, max_revs: float = 2.0, direction: str = "CW") -> dict[str, Any]:
+    def start(self, rpm: float = 4.5, max_revs: float = 2.0, direction: str = "CW", color_mode: str = "dark_line", shape_mode: str = "line") -> dict[str, Any]:
         self.stop()
         self.is_active = True
         self._stop_requested = False
         self.state = "SEARCHING"
-        self.status_message = f"Searching for marker line/dot at {rpm} RPM (max {max_revs:.0f} turns)..."
+        if self.calibrator:
+            self.calibrator.color_filter = color_mode
+            self.calibrator.marker_shape_mode = shape_mode
+        self.status_message = f"Searching for {color_mode.replace('_', ' ')} marker at {rpm} RPM (max {max_revs:.0f} turns)..."
 
         def _worker():
             stepper = getattr(self.hw, "stepper", None) if self.hw else None
