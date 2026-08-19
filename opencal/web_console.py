@@ -248,142 +248,146 @@ HTML_DASHBOARD = """<!DOCTYPE html>
     </div>
 
     <div class="grid">
-        <!-- 0. PRECISION MOTOR AUTO-TUNER & DEEP TELEMETRY MATRIX -->
+        <!-- 0. REAL-TIME SENSOR TELEMETRY & COLLAPSIBLE MOTOR AUTO-CALIBRATION STUDIO -->
         <div class="card" style="grid-column: 1 / -1; border-color: rgba(6, 182, 212, 0.4); background: rgba(10, 18, 32, 0.85);">
-            <div class="card-title">
-                <span style="color: var(--accent-cyan);">🎯 Precision Motor Auto-Tuner &amp; Deep Telemetry</span>
-                <span id="cal-status-badge" class="badge" style="background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); border-color: rgba(6, 182, 212, 0.4);">Ready</span>
+            <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: var(--accent-cyan); font-size: 15px; font-weight: 700;">⚡ Real-Time Hardware &amp; Sensor Telemetry Matrix</span>
+                <span id="cal-status-badge" class="badge" style="background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); border-color: rgba(6, 182, 212, 0.4);">Live Active Stream</span>
             </div>
-
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px;">
-                <!-- Left: Live Vision Feed & HUD -->
-                <div>
-                    <div class="cam-wrapper" style="border: 1px solid rgba(6, 182, 212, 0.3); height: 280px;">
-                        <img id="cal-cam-stream" class="cam-feed" src="/api/calibrate/motor/stream" alt="Calibrator Feed" style="height: 100%;">
-                    </div>
-                    <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
-                        <button class="primary" style="flex: 1; min-width: 140px;" onclick="startMotorAutoCal()">▶ Start Auto-Cal</button>
-                        <button class="danger" style="flex: 1; min-width: 100px;" onclick="stopMotorAutoCal()">⏹ Stop</button>
-                        <button class="success" style="flex: 1.2; min-width: 160px; background: rgba(16, 185, 129, 0.25); border-color: var(--accent-green); color: var(--accent-green);" onclick="applyCalibrationCorrection()">💾 Apply &amp; Save Factor</button>
+            
+            <!-- 3-Column Always-Visible Sensor Telemetry Matrix -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-top: 6px;">
+                <!-- Motor Telemetry -->
+                <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px;">
+                    <div style="font-size: 11px; font-weight: 600; color: var(--accent-amber); margin-bottom: 6px;">⚙ MOTOR DRIVER TELEMETRY</div>
+                    <div style="font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-family: var(--font-mono);">
+                        <div style="color: var(--text-muted);">VIN Voltage: <b id="t-motor-vin" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">Driver: <b id="t-motor-driver" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">Stall Load: <b id="t-motor-load" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">Status: <b id="t-motor-status" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">Step Freq: <b id="t-motor-freq" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">Temp Flag: <b id="t-motor-temp" style="color: #fff;">--</b></div>
                     </div>
                 </div>
 
-                <!-- Right: Calibration Gauges & Controls -->
-                <div>
-                    <!-- Big Metrics Display -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-                        <div style="background: rgba(0,0,0,0.35); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); text-align: center;">
-                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Measured Avg RPM</div>
-                            <div id="cal-meas-rpm" style="font-size: 24px; font-weight: 700; color: var(--accent-green); font-family: var(--font-mono); margin-top: 4px;">0.0000</div>
-                            <div id="cal-jitter-std" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Jitter: &plusmn;0.0000 RPM</div>
-                        </div>
-                        <div style="background: rgba(0,0,0,0.35); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); text-align: center;">
-                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Correction Factor</div>
-                            <div id="cal-sugg-factor" style="font-size: 24px; font-weight: 700; color: var(--accent-cyan); font-family: var(--font-mono); margin-top: 4px;">1.000000</div>
-                            <div id="cal-curr-factor" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Current: 1.000000</div>
-                        </div>
+                <!-- Raspberry Pi Telemetry -->
+                <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px;">
+                    <div style="font-size: 11px; font-weight: 600; color: var(--accent-cyan); margin-bottom: 6px;">🥧 RASPBERRY PI OS SENSORS</div>
+                    <div style="font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-family: var(--font-mono);">
+                        <div style="color: var(--text-muted);">CPU Temp: <b id="t-pi-temp" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">Core Volts: <b id="t-pi-volts" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">ARM Clock: <b id="t-pi-clock" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">CPU Load: <b id="t-pi-cpu" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">RAM Used: <b id="t-pi-ram" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">Throttle: <b id="t-pi-throttle" style="color: var(--accent-green);">HEALTHY</b></div>
                     </div>
+                </div>
 
-                    <!-- Progress Bar & Status -->
-                    <div style="margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">
-                            <span>Revolutions: <b id="cal-rev-count" style="color: var(--text-main);">0 / 30</b></span>
-                            <span id="cal-progress-pct" style="color: var(--accent-cyan);">0%</span>
-                        </div>
-                        <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden;">
-                            <div id="cal-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)); transition: width 0.3s;"></div>
-                        </div>
-                        <div id="cal-status-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px; font-style: italic;">Status: Idle (Ready to Calibrate)</div>
-                    </div>
-
-                    <!-- Calibration Settings -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px;">
-                        <div>
-                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Target RPM:</label>
-                            <input type="number" id="cal-target-rpm" value="9.0" step="0.1" min="1" max="30" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
-                        </div>
-                        <div>
-                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Rotations:</label>
-                            <select id="cal-target-revs" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
-                                <option value="20">20 Revs (Fast)</option>
-                                <option value="30" selected>30 Revs (Std)</option>
-                                <option value="50">50 Revs (Ultra)</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Marker Shape:</label>
-                            <select id="cal-shape-mode" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
-                                <option value="auto" selected>Auto (Line / Dot)</option>
-                                <option value="line">Line (Wobble-Tolerant)</option>
-                                <option value="dot">Dot / Circle</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Color Mode:</label>
-                            <select id="cal-color-mode" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
-                                <option value="bright_dot" selected>Bright / White</option>
-                                <option value="green">Neon Green</option>
-                                <option value="cyan">Cyan / Blue</option>
-                                <option value="dark_dot">Dark Stripe/Dot</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Telemetry Logs Quick Download -->
-                    <div style="border-top: 1px solid var(--border-card); padding-top: 10px; display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 12px; color: var(--text-muted);">📊 Telemetry CSV Logs:</span>
-                        <div style="display: flex; gap: 8px;">
-                            <button style="padding: 4px 10px; font-size: 11px;" onclick="loadTelemetryLogs()">🔄 Refresh</button>
-                            <button class="primary" style="padding: 4px 12px; font-size: 11px;" onclick="downloadLatestTelemetryLog()">📥 Download CSV</button>
-                        </div>
+                <!-- Vision & Calibration Diagnostics -->
+                <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px;">
+                    <div style="font-size: 11px; font-weight: 600; color: var(--accent-green); margin-bottom: 6px;">🎯 OPTICS &amp; VIAL WOBBLE TELEMETRY</div>
+                    <div style="font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-family: var(--font-mono);">
+                        <div style="color: var(--text-muted);">Marker Lock: <b id="t-vis-lock" style="color: var(--accent-green);">--</b></div>
+                        <div style="color: var(--text-muted);">Shape Type: <b id="t-vis-shape" style="color: var(--accent-cyan);">--</b></div>
+                        <div style="color: var(--text-muted);">Centroid Y: <b id="t-vis-y" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">Vial Tilt: <b id="t-vis-tilt" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">Vial Wobble: <b id="t-vis-wobble" style="color: #fff;">--</b></div>
+                        <div style="color: var(--text-muted);">Confidence: <b id="t-vis-conf" style="color: #fff;">--</b></div>
                     </div>
                 </div>
             </div>
 
-            <!-- FULL DEEP TELEMETRY MATRIX TABLE -->
-            <div style="margin-top: 16px; border-top: 1px solid var(--border-card); padding-top: 12px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <span style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-muted);">⚡ Real-Time Hardware &amp; Sensor Telemetry Matrix</span>
-                    <span style="font-size: 11px; color: var(--accent-green);">Live Active Stream</span>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px;">
-                    <!-- Motor Telemetry -->
-                    <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px;">
-                        <div style="font-size: 11px; font-weight: 600; color: var(--accent-amber); margin-bottom: 6px;">⚙ MOTOR DRIVER TELEMETRY</div>
-                        <div style="font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-family: var(--font-mono);">
-                            <div style="color: var(--text-muted);">VIN Voltage: <b id="t-motor-vin" style="color: #fff;">12.18 V</b></div>
-                            <div style="color: var(--text-muted);">Driver: <b id="t-motor-driver" style="color: #fff;">TMC2209</b></div>
-                            <div style="color: var(--text-muted);">Stall Load: <b id="t-motor-load" style="color: #fff;">420</b></div>
-                            <div style="color: var(--text-muted);">Status: <b id="t-motor-status" style="color: #fff;">Running</b></div>
-                            <div style="color: var(--text-muted);">Step Freq: <b id="t-motor-freq" style="color: #fff;">480.0 Hz</b></div>
-                            <div style="color: var(--text-muted);">Temp Flag: <b id="t-motor-temp" style="color: #fff;">OK (&lt;120C)</b></div>
+            <!-- Toggle Button for Motor Auto-Calibration Studio -->
+            <div style="margin-top: 14px; text-align: center;">
+                <button id="btn-toggle-cal-studio" class="primary" style="width: 100%; padding: 10px 16px; font-size: 13px; font-weight: 600; border-radius: 8px; background: rgba(6, 182, 212, 0.15); border: 1px solid var(--accent-cyan); color: var(--accent-cyan);" onclick="toggleCalStudio()">
+                    🎯 Open Motor Auto-Calibration Studio (Live Vision HUD &amp; Controls) ▼
+                </button>
+            </div>
+
+            <!-- Collapsible Calibration Studio Panel -->
+            <div id="cal-studio-panel" style="display: none; margin-top: 16px; border-top: 1px dashed rgba(6, 182, 212, 0.3); padding-top: 16px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px;">
+                    <!-- Left: Live Vision Feed & HUD -->
+                    <div>
+                        <div class="cam-wrapper" style="border: 1px solid rgba(6, 182, 212, 0.3); height: 280px; position: relative;">
+                            <img id="cal-cam-stream" class="cam-feed" src="" alt="Calibrator Vision HUD Stream" style="height: 100%;">
+                        </div>
+                        <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+                            <button class="primary" style="flex: 1; min-width: 140px;" onclick="startMotorAutoCal()">▶ Start Auto-Cal</button>
+                            <button class="danger" style="flex: 1; min-width: 100px;" onclick="stopMotorAutoCal()">⏹ Stop</button>
+                            <button class="success" style="flex: 1.2; min-width: 160px; background: rgba(16, 185, 129, 0.25); border-color: var(--accent-green); color: var(--accent-green);" onclick="applyCalibrationCorrection()">💾 Apply &amp; Save Factor</button>
                         </div>
                     </div>
 
-                    <!-- Raspberry Pi Telemetry -->
-                    <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px;">
-                        <div style="font-size: 11px; font-weight: 600; color: var(--accent-cyan); margin-bottom: 6px;">🥧 RASPBERRY PI OS SENSORS</div>
-                        <div style="font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-family: var(--font-mono);">
-                            <div style="color: var(--text-muted);">CPU Temp: <b id="t-pi-temp" style="color: #fff;">46.2 °C</b></div>
-                            <div style="color: var(--text-muted);">Core Volts: <b id="t-pi-volts" style="color: #fff;">1.20 V</b></div>
-                            <div style="color: var(--text-muted);">ARM Clock: <b id="t-pi-clock" style="color: #fff;">2400 MHz</b></div>
-                            <div style="color: var(--text-muted);">CPU Load: <b id="t-pi-cpu" style="color: #fff;">14.2 %</b></div>
-                            <div style="color: var(--text-muted);">RAM Used: <b id="t-pi-ram" style="color: #fff;">320 MB</b></div>
-                            <div style="color: var(--text-muted);">Throttle: <b id="t-pi-throttle" style="color: var(--accent-green);">HEALTHY</b></div>
+                    <!-- Right: Calibration Gauges & Controls -->
+                    <div>
+                        <!-- Big Metrics Display -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                            <div style="background: rgba(0,0,0,0.35); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); text-align: center;">
+                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Measured Avg RPM</div>
+                                <div id="cal-meas-rpm" style="font-size: 24px; font-weight: 700; color: var(--accent-green); font-family: var(--font-mono); margin-top: 4px;">0.0000</div>
+                                <div id="cal-jitter-std" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Jitter: &plusmn;0.0000 RPM</div>
+                            </div>
+                            <div style="background: rgba(0,0,0,0.35); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); text-align: center;">
+                                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Correction Factor</div>
+                                <div id="cal-sugg-factor" style="font-size: 24px; font-weight: 700; color: var(--accent-cyan); font-family: var(--font-mono); margin-top: 4px;">1.000000</div>
+                                <div id="cal-curr-factor" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Current: 1.000000</div>
+                            </div>
                         </div>
-                    </div>
 
-                    <!-- Vision & Calibration Diagnostics -->
-                    <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px;">
-                        <div style="font-size: 11px; font-weight: 600; color: var(--accent-green); margin-bottom: 6px;">🎯 OPTICS &amp; VIAL WOBBLE TELEMETRY</div>
-                        <div style="font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-family: var(--font-mono);">
-                            <div style="color: var(--text-muted);">Marker Lock: <b id="t-vis-lock" style="color: var(--accent-green);">LOCKED</b></div>
-                            <div style="color: var(--text-muted);">Shape Type: <b id="t-vis-shape" style="color: var(--accent-cyan);">LINE</b></div>
-                            <div style="color: var(--text-muted);">Centroid Y: <b id="t-vis-y" style="color: #fff;">+0.042</b></div>
-                            <div style="color: var(--text-muted);">Vial Tilt: <b id="t-vis-tilt" style="color: #fff;">+0.0°</b></div>
-                            <div style="color: var(--text-muted);">Vial Wobble: <b id="t-vis-wobble" style="color: #fff;">0.0 px</b></div>
-                            <div style="color: var(--text-muted);">Confidence: <b id="t-vis-conf" style="color: #fff;">184 px²</b></div>
+                        <!-- Progress Bar & Status -->
+                        <div style="margin-bottom: 12px;">
+                            <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">
+                                <span>Revolutions: <b id="cal-rev-count" style="color: var(--text-main);">0 / 30</b></span>
+                                <span id="cal-progress-pct" style="color: var(--accent-cyan);">0%</span>
+                            </div>
+                            <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden;">
+                                <div id="cal-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)); transition: width 0.3s;"></div>
+                            </div>
+                            <div id="cal-status-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px; font-style: italic;">Status: Idle (Ready to Calibrate)</div>
+                        </div>
+
+                        <!-- Calibration Settings -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+                            <div>
+                                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Target RPM:</label>
+                                <input type="number" id="cal-target-rpm" value="9.0" step="0.1" min="1" max="30" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
+                            </div>
+                            <div>
+                                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Rotations:</label>
+                                <select id="cal-target-revs" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
+                                    <option value="20">20 Revs (Fast)</option>
+                                    <option value="30" selected>30 Revs (Std)</option>
+                                    <option value="50">50 Revs (Ultra)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Marker Shape:</label>
+                                <select id="cal-shape-mode" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
+                                    <option value="line" selected>Line (Wobble-Tolerant)</option>
+                                    <option value="dot">Dot / Circle</option>
+                                    <option value="auto">Auto (Line / Dot)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Color Mode:</label>
+                                <select id="cal-color-mode" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
+                                    <option value="red" selected>🔴 Red Line (on White Tape)</option>
+                                    <option value="bright_dot">⚪ Bright / White</option>
+                                    <option value="green">🟢 Neon Green</option>
+                                    <option value="cyan">🔵 Cyan / Blue</option>
+                                    <option value="dark_dot">⚫ Dark Stripe / Dot</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Telemetry Logs Quick Download -->
+                        <div style="border-top: 1px solid var(--border-card); padding-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 12px; color: var(--text-muted);">📊 Telemetry CSV Logs:</span>
+                            <div style="display: flex; gap: 8px;">
+                                <button style="padding: 4px 10px; font-size: 11px;" onclick="loadTelemetryLogs()">🔄 Refresh</button>
+                                <button class="primary" style="padding: 4px 12px; font-size: 11px;" onclick="downloadLatestTelemetryLog()">📥 Download CSV</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -879,6 +883,28 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         }
         function stopExpVideo() {
             postAPI('/api/experimental/stop');
+        }
+
+        // Toggle Motor Auto-Calibration Studio Collapsible Panel
+        function toggleCalStudio() {
+            const panel = document.getElementById('cal-studio-panel');
+            const btn = document.getElementById('btn-toggle-cal-studio');
+            const img = document.getElementById('cal-cam-stream');
+            if (panel.style.display === 'none' || !panel.style.display) {
+                panel.style.display = 'block';
+                btn.innerHTML = '▲ Close Motor Auto-Calibration Studio';
+                btn.style.background = 'rgba(239, 68, 68, 0.2)';
+                btn.style.color = 'var(--accent-rose)';
+                btn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                img.src = '/api/calibrate/motor/stream';
+            } else {
+                panel.style.display = 'none';
+                btn.innerHTML = '🎯 Open Motor Auto-Calibration Studio (Live Vision HUD &amp; Controls) ▼';
+                btn.style.background = 'rgba(6, 182, 212, 0.15)';
+                btn.style.color = 'var(--accent-cyan)';
+                btn.style.borderColor = 'var(--accent-cyan)';
+                img.src = '';
+            }
         }
 
         // Motor Auto-Calibration

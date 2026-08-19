@@ -137,7 +137,12 @@ class MotorCalibrator:
         line_pts = None
 
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        if self.color_filter == "green":
+        if self.color_filter == "red":
+            # Red wraps around HSV 0 and 180 degrees - high saturation on white tape
+            mask1 = cv2.inRange(hsv, np.array([0, 55, 45]), np.array([14, 255, 255]))
+            mask2 = cv2.inRange(hsv, np.array([165, 55, 45]), np.array([180, 255, 255]))
+            mask = cv2.bitwise_or(mask1, mask2)
+        elif self.color_filter == "green":
             mask = cv2.inRange(hsv, np.array([35, 70, 70]), np.array([85, 255, 255]))
         elif self.color_filter == "cyan":
             mask = cv2.inRange(hsv, np.array([80, 70, 70]), np.array([105, 255, 255]))
