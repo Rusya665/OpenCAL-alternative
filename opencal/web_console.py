@@ -264,10 +264,12 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
             <div class="badge"><div class="pulse-dot"></div> <span id="system-status">SYSTEM ONLINE</span></div>
+            <button onclick="gitPullAndRestart()" style="padding: 5px 10px; font-size: 11px; background: rgba(6, 182, 212, 0.2); border-color: rgba(6, 182, 212, 0.4); color: var(--accent-cyan);">⚡ Git Pull & Restart</button>
             <button onclick="lockStudio()" style="padding: 5px 10px; font-size: 11px; background: rgba(255,255,255,0.08);">🔒 Lock Studio</button>
             <button onclick="rebootPi()" class="danger" style="padding: 5px 10px; font-size: 11px;">🔄 Reboot</button>
         </div>
     </header>
+
 
     <!-- AUTHENTICATION OVERLAY -->
     <div id="auth-overlay" style="display: none; position: fixed; inset: 0; background: rgba(8, 12, 20, 0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); z-index: 9999; justify-content: center; align-items: center;">
@@ -988,9 +990,17 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             postAPI('/api/lcd/contrast', {contrast: parseInt(v)});
         }
 
+        function gitPullAndRestart() {
+            if (confirm('Fetch latest code from GitHub and restart OpenCAL service?')) {
+                postAPI('/api/system/git_pull');
+                showToast('Pulling latest code and restarting service...');
+            }
+        }
+
         function rebootPi() {
             if (confirm('Reboot Raspberry Pi system?')) postAPI('/api/system/reboot');
         }
+
 
         // Experimental Projector & Audio
         function setProjectorVolume(val) {
@@ -2321,8 +2331,22 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(e)}, status=500)
             return
 
-        # 7. SYSTEM CONTROLS
+        if parsed.path == "/api/system/git_pull":
+            def _pull_and_restart():
+                try:
+                    repo_dir = Path(__file__).resolve().parent.parent
+                    subprocess.run(["git", "fetch", "origin"], cwd=repo_dir, timeout=20)
+                    subprocess.run(["git", "reset", "--hard", "origin/custom-newhaven-lcd"], cwd=repo_dir, timeout=20)
+                    time.sleep(0.5)
+                    subprocess.run(["sudo", "systemctl", "restart", "opencal.service"])
+                except Exception as e:
+                    print(f"Git pull failed: {e}")
+            threading.Thread(target=_pull_and_restart, daemon=True).start()
+            self._send_json({"message": "Pulling latest code from GitHub and restarting OpenCAL service..."})
+            return
+
         if parsed.path == "/api/system/restart_app":
+
             def _restart():
                 if self.hardware and getattr(self.hardware, "sound_manager", None):
                     self.hardware.sound_manager.play_shutdown()
