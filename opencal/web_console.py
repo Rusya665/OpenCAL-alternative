@@ -1204,6 +1204,9 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
     hardware: HardwareController | None = None
     print_controller: Any | None = None
     motor_calibrator: MotorCalibrator | None = None
+    _latest_cam_jpg: bytes | None = None
+    _latest_cal_jpg: bytes | None = None
+    _cal_lock: threading.Lock = threading.Lock()
 
     def log_message(self, format, *args):
         pass  # Suppress excessive HTTP access logs
@@ -1471,8 +1474,8 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
 
             try:
                 while True:
-                    frame = None
-                    if self.hardware and self.hardware.camera:
+                    frame = self._latest_cam_jpg
+                    if not frame and self.hardware and self.hardware.camera:
                         frame = self.hardware.camera.get_jpeg_frame()
                     if frame:
                         self.wfile.write(b"--frame\r\n")
@@ -1482,7 +1485,7 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                         self.wfile.write(b"\r\n")
                         time.sleep(0.033)  # ~30 FPS
                     else:
-                        time.sleep(0.1)
+                        time.sleep(0.05)
             except (BrokenPipeError, ConnectionResetError):
                 pass
             return
@@ -1514,46 +1517,20 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
             self.send_header("Pragma", "no-cache")
             self.end_headers()
 
-            sim_angle = 0.0
             try:
                 while True:
-                    frame_bgr = None
-                    if self.hardware and self.hardware.camera:
-                        raw_jpg = self.hardware.camera.get_jpeg_frame()
-                        if raw_jpg:
-                            arr = np.frombuffer(raw_jpg, dtype=np.uint8)
-                            frame_bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-
-                    # Fallback simulation if no camera hardware is attached
-                    if frame_bgr is None:
-                        frame_bgr = np.zeros((480, 640, 3), dtype=np.uint8)
-                        cv2.rectangle(frame_bgr, (160, 80), (480, 400), (35, 45, 55), -1)
-                        cv2.rectangle(frame_bgr, (280, 80), (360, 400), (65, 65, 65), -1)
-                        if self.motor_calibrator and self.motor_calibrator.is_active:
-                            sim_speed = self.motor_calibrator.target_rpm * 360.0 / 60.0
-                            sim_angle = (sim_angle + sim_speed * 0.033) % 360.0
-                            if sim_angle < 180.0:
-                                rad = math.radians(sim_angle)
-                                dot_y = int(240 - 120 * math.cos(rad))
-                                cv2.circle(frame_bgr, (320, dot_y), 11, (255, 255, 255), -1)
-                        else:
-                            cv2.circle(frame_bgr, (320, 240), 11, (255, 255, 255), -1)
-
-                    if self.motor_calibrator:
-                        annotated, _ = self.motor_calibrator.process_frame(frame_bgr)
-                    else:
-                        annotated = frame_bgr
-
-                    ret, enc = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
-                    if ret:
-                        jpg_bytes = enc.tobytes()
+                    jpg_bytes = None
+                    with self._cal_lock:
+                        jpg_bytes = self._latest_cal_jpg or self._latest_cam_jpg
+                    if jpg_bytes:
                         self.wfile.write(b"--frame\r\n")
                         self.wfile.write(b"Content-Type: image/jpeg\r\n")
                         self.wfile.write(f"Content-Length: {len(jpg_bytes)}\r\n\r\n".encode("utf-8"))
                         self.wfile.write(jpg_bytes)
                         self.wfile.write(b"\r\n")
-
-                    time.sleep(0.033)  # ~30 FPS
+                        time.sleep(0.033)  # ~30 FPS
+                    else:
+                        time.sleep(0.05)
             except (BrokenPipeError, ConnectionResetError):
                 pass
             return
@@ -2074,6 +2051,48 @@ def start_web_console_thread(print_controller_or_hardware: Any, host="0.0.0.0", 
         WebConsoleHandler.hardware = print_controller_or_hardware
 
     WebConsoleHandler.motor_calibrator = MotorCalibrator(WebConsoleHandler.hardware)
+
+    def _vision_worker_loop():
+        sim_angle = 0.0
+        while True:
+            try:
+                raw_jpg = None
+                if WebConsoleHandler.hardware and WebConsoleHandler.hardware.camera:
+                    raw_jpg = WebConsoleHandler.hardware.camera.get_jpeg_frame()
+
+                frame_bgr = None
+                if raw_jpg:
+                    WebConsoleHandler._latest_cam_jpg = raw_jpg
+                    arr = np.frombuffer(raw_jpg, dtype=np.uint8)
+                    frame_bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+                if frame_bgr is None:
+                    # Simulation fallback when camera is absent
+                    frame_bgr = np.zeros((480, 640, 3), dtype=np.uint8)
+                    cv2.rectangle(frame_bgr, (160, 80), (480, 400), (35, 45, 55), -1)
+                    cv2.rectangle(frame_bgr, (280, 80), (360, 400), (65, 65, 65), -1)
+                    if WebConsoleHandler.motor_calibrator and WebConsoleHandler.motor_calibrator.is_active:
+                        sim_speed = WebConsoleHandler.motor_calibrator.target_rpm * 360.0 / 60.0
+                        sim_angle = (sim_angle + sim_speed * 0.033) % 360.0
+                        if sim_angle < 180.0:
+                            rad = math.radians(sim_angle)
+                            dot_y = int(240 - 120 * math.cos(rad))
+                            cv2.circle(frame_bgr, (320, dot_y), 11, (255, 255, 255), -1)
+                    else:
+                        cv2.circle(frame_bgr, (320, 240), 11, (255, 255, 255), -1)
+
+                if WebConsoleHandler.motor_calibrator and frame_bgr is not None:
+                    annotated, _ = WebConsoleHandler.motor_calibrator.process_frame(frame_bgr)
+                    ret, enc = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    if ret:
+                        with WebConsoleHandler._cal_lock:
+                            WebConsoleHandler._latest_cal_jpg = enc.tobytes()
+
+                time.sleep(0.033)
+            except Exception:
+                time.sleep(0.05)
+
+    threading.Thread(target=_vision_worker_loop, daemon=True).start()
 
     server = ThreadingHTTPServer((host, port), WebConsoleHandler)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
