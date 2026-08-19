@@ -1266,13 +1266,14 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             if (tab === 'local') {
                 textarea.value = (configRawData.local_text && configRawData.local_text.trim() && configRawData.local_text !== '{}') 
                     ? configRawData.local_text 
-                    : '{\n  "stepper_motor": {\n    "correction_factor": 1.0\n  }\n}';
+                    : JSON.stringify({"stepper_motor": {"correction_factor": 1.0}}, null, 2);
                 textarea.readOnly = false;
                 textarea.style.background = '#070b14';
                 tag.innerText = 'config.local.json (Editable)';
                 tag.style.background = 'rgba(168,85,247,0.2)';
                 tag.style.color = 'var(--accent-purple)';
                 saveBtn.style.display = 'inline-block';
+
             } else if (tab === 'merged') {
                 textarea.value = configRawData.merged_text;
                 textarea.readOnly = true;
