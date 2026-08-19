@@ -141,16 +141,26 @@ class MotorCalibrator:
 
         if self.color_filter in ("dark_line", "dark_dot", "black", "black_line"):
             # Black / Dark drawn pen line on bright white tape:
-            # 1. Blackhat transform extracts local dark lines thinner than 21px
-            k_bh = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 21))
+            # Step 1: Detect the bright white tape cylinder region
+            tape_mask = (gray > 85).astype(np.uint8) * 255
+            tape_contours, _ = cv2.findContours(tape_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            filled_tape = np.zeros_like(tape_mask)
+            for tc in tape_contours:
+                if cv2.contourArea(tc) > 3000:
+                    cv2.drawContours(filled_tape, [tc], -1, 255, -1)
+            filled_tape = cv2.morphologyEx(filled_tape, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (35, 35)))
+
+            # Step 2: Extract dark marker INSIDE the white tape (rejects outside dark chamber!)
+            k_bh = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))
             blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, k_bh)
-            _, mask_bh = cv2.threshold(blackhat, 24, 255, cv2.THRESH_BINARY)
-            # 2. Direct dark threshold (strictly excludes white glare!)
-            mask_dark = ((gray < 90) & (gray > 6)).astype(np.uint8) * 255
-            mask = cv2.bitwise_or(mask_bh, mask_dark)
-            # Smooth along horizontal line axis
-            k_rect = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 3))
-            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_rect)
+            _, mask_bh = cv2.threshold(blackhat, 18, 255, cv2.THRESH_BINARY)
+            mask_dark = (gray < 85).astype(np.uint8) * 255
+            line_mask = cv2.bitwise_or(mask_bh, mask_dark)
+
+            # Restrict strictly to inside the white tape
+            mask = cv2.bitwise_and(filled_tape, line_mask)
+            k_line = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 3))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_line)
         elif self.color_filter == "red":
             # Dual HSV Mask (Hue 0-14 & 168-180) with high saturation
             mask_hsv1 = cv2.inRange(hsv, np.array([0, 60, 40]), np.array([14, 255, 255]))
@@ -180,22 +190,25 @@ class MotorCalibrator:
         valid_contours = []
         for c in contours:
             area = cv2.contourArea(c)
-            if area < 10 or area > 4500:
+            if area < 25 or area > 25000:
                 continue
             bx, by, bw, bh = cv2.boundingRect(c)
-            # Rejection: Marker lines are horizontal and thin; dots are small
+            aspect = bw / max(float(bh), 1.0)
+            # Rejection: Marker lines are horizontal and bounded; dots are small
             if self.marker_shape_mode == "line" or (self.color_filter in ("dark_line", "black", "red") and self.marker_shape_mode != "dot"):
-                if bh > 40:  # line cannot be taller than 40px
+                if bh > 135:  # line cannot be thicker than 135px
                     continue
-                if bw < 15:  # line must have minimal width
+                if bw < 25:   # line must have minimal width
+                    continue
+                if aspect < 1.05: # line must be horizontal (wider than tall)
                     continue
                 valid_contours.append(c)
             elif self.marker_shape_mode == "dot":
-                if bw > 65 or bh > 65:  # dot cannot be giant
+                if bw > 75 or bh > 75:  # dot cannot be giant
                     continue
                 valid_contours.append(c)
             else:  # "auto"
-                if bh > 65 and bw > 65:  # discard massive background patches
+                if bh > 140 and bw > 140:
                     continue
                 valid_contours.append(c)
 
