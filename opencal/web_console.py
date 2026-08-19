@@ -1142,14 +1142,10 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             }
         }
 
-        // Device Authentication
+        // Device Authentication (Open by default for lab access)
         function checkDeviceAuth() {
-            const token = localStorage.getItem('opencal_auth_token') || sessionStorage.getItem('opencal_auth_token');
-            if (!token) {
-                document.getElementById('auth-overlay').style.display = 'flex';
-            } else {
-                document.getElementById('auth-overlay').style.display = 'none';
-            }
+            const overlay = document.getElementById('auth-overlay');
+            if (overlay) overlay.style.display = 'none';
         }
 
         async function submitStudioLogin() {
