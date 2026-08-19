@@ -309,18 +309,22 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px;">
                     <!-- Left: Live Vision Feed & HUD -->
                     <div>
-                        <div id="cal-cam-container" class="cam-wrapper" style="border: 1px solid rgba(6, 182, 212, 0.3); height: 420px; position: relative; overflow: hidden; user-select: none;">
+                        <div id="cal-cam-container" class="cam-wrapper" style="border: 1px solid rgba(6, 182, 212, 0.3); height: 420px; position: relative; overflow: hidden; user-select: none; display: flex; justify-content: center; align-items: center; background: #070b14;">
                             <button onclick="toggleCamFullscreen('cal-cam-stream')" style="position: absolute; top: 10px; right: 10px; padding: 6px 12px; font-size: 12px; background: rgba(10,15,30,0.85); border: 1px solid var(--accent-cyan); border-radius: 6px; color: var(--accent-cyan); z-index: 25; cursor: pointer;">⛶ Fullscreen</button>
-                            <img id="cal-cam-stream" class="cam-feed" src="" alt="Calibrator Vision HUD Stream" style="height: 100%; width: 100%; object-fit: contain; pointer-events: none;">
                             
-                            <!-- Interactive Draggable & Resizable Optical Gate Overlay -->
-                            <div id="optical-gate-overlay" style="position: absolute; left: 38%; top: 22%; width: 24%; height: 56%; border: 2px dashed #00ffff; background: rgba(0, 255, 255, 0.08); box-shadow: 0 0 14px rgba(0,255,255,0.4); cursor: move; z-index: 15; touch-action: none; border-radius: 4px;">
-                                <div id="gate-header" style="background: rgba(0, 200, 255, 0.85); color: #000; font-size: 10px; font-weight: 800; padding: 2px 6px; display: flex; justify-content: space-between; align-items: center; cursor: move; user-select: none;">
-                                    <span>✥ DRAG GATE</span>
-                                    <span id="gate-coords-label" style="font-family: var(--font-mono); font-size: 9px;">24x56%</span>
+                            <!-- 16:9 Box matching camera frame exactly (Zero letterbox offset) -->
+                            <div id="cal-video-frame-box" style="position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 420px; max-width: calc(420px * 16 / 9); margin: 0 auto; display: block;">
+                                <img id="cal-cam-stream" class="cam-feed" src="" alt="Calibrator Vision HUD Stream" style="height: 100%; width: 100%; object-fit: fill; pointer-events: none; display: block;">
+                                
+                                <!-- Interactive Draggable & Resizable Optical Gate Overlay -->
+                                <div id="optical-gate-overlay" style="position: absolute; left: 38%; top: 22%; width: 24%; height: 56%; border: 2px solid #00ffff; background: rgba(0, 255, 255, 0.10); box-shadow: 0 0 14px rgba(0,255,255,0.4); cursor: move; z-index: 15; touch-action: none; border-radius: 4px;">
+                                    <div id="gate-header" style="background: rgba(0, 200, 255, 0.90); color: #000; font-size: 10px; font-weight: 800; padding: 2px 6px; display: flex; justify-content: space-between; align-items: center; cursor: move; user-select: none;">
+                                        <span>✥ DRAG GATE</span>
+                                        <span id="gate-coords-label" style="font-family: var(--font-mono); font-size: 9px;">24x56%</span>
+                                    </div>
+                                    <div style="position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: rgba(255, 165, 0, 0.8); pointer-events: none;"></div>
+                                    <div id="gate-resize-handle" style="position: absolute; bottom: 0; right: 0; width: 20px; height: 20px; background: rgba(0, 255, 255, 0.85); cursor: se-resize; border-radius: 4px 0 2px 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #000; font-weight: bold; user-select: none;">⤡</div>
                                 </div>
-                                <div style="position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: rgba(255, 165, 0, 0.8); pointer-events: none;"></div>
-                                <div id="gate-resize-handle" style="position: absolute; bottom: 0; right: 0; width: 20px; height: 20px; background: rgba(0, 255, 255, 0.85); cursor: se-resize; border-radius: 4px 0 2px 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #000; font-weight: bold; user-select: none;">⤡</div>
                             </div>
                         </div>
 
@@ -1030,8 +1034,9 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 if (!isDraggingGate && !isResizingGate) return;
                 const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0].clientX);
                 const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0].clientY);
-                const cw = container.clientWidth || 1;
-                const ch = container.clientHeight || 1;
+                const frameBox = document.getElementById('cal-video-frame-box') || container;
+                const cw = frameBox.clientWidth || 1;
+                const ch = frameBox.clientHeight || 1;
 
                 const dx = (clientX - dragStart.mouseX) / cw;
                 const dy = (clientY - dragStart.mouseY) / ch;

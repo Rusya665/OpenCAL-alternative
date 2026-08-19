@@ -253,31 +253,43 @@ class MotorCalibrator:
         else:  # "bright_dot" / white / fluorescent
             _, mask = cv2.threshold(gray_gate, 210, 255, cv2.THRESH_BINARY)
 
-        # 3. Center of Mass & Trajectory within the Gate
-        # (Works seamlessly even when the marker line is wider or thicker than the gate!)
-        marker_pixel_count = cv2.countNonZero(mask)
-        if marker_pixel_count >= 20:
-            M = cv2.moments(mask)
+        # 3. Contour Validation & Centroid Extraction within Optical Gate
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        valid_targets = []
+        for c in contours:
+            area = cv2.contourArea(c)
+            bx, by, bw, bh = cv2.boundingRect(c)
+            if self.marker_shape_mode == "line" or self.color_filter in ("dark_line", "black", "black_line"):
+                # Line must span across at least 25% of the gate width and have substantial area
+                if bw >= max(18, int(gate_w * 0.25)) and area >= 60 and bh <= int(gate_h * 0.85):
+                    valid_targets.append(c)
+            elif self.marker_shape_mode == "dot":
+                if max(bw, bh) <= int(gate_h * 0.50) and area >= 25:
+                    valid_targets.append(c)
+            else:
+                if area >= 40:
+                    valid_targets.append(c)
+
+        if valid_targets:
+            best_c = max(valid_targets, key=cv2.contourArea)
+            M = cv2.moments(best_c)
             if M["m00"] > 0:
                 marker_cx = int(M["m10"] / M["m00"])
                 marker_cy = int(M["m01"] / M["m00"])
-                marker_norm_y = (marker_cy - gate_center_y) / (gate_center_y)
+                marker_norm_y = (marker_cy - gate_center_y) / gate_center_y
                 marker_detected = True
-                confidence = float(marker_pixel_count)
+                confidence = float(cv2.contourArea(best_c))
                 self.last_marker_seen = t_now
-                shape_type = "line"
+                shape_type = "line" if self.marker_shape_mode != "dot" else "dot"
                 self.detected_shape_type = shape_type
                 line_len = float(gate_w)
 
                 # Line tilt calculation within the gate
-                contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                if contours:
-                    best_c = max(contours, key=cv2.contourArea)
-                    if len(best_c) >= 5:
-                        [vx, vy, x0, y0] = cv2.fitLine(best_c, cv2.DIST_L2, 0, 0.01, 0.01)
-                        line_tilt = float(math.degrees(math.atan2(vy[0], vx[0])))
-                        if line_tilt > 90: line_tilt -= 180
-                        elif line_tilt < -90: line_tilt += 180
+                if len(best_c) >= 5:
+                    [vx, vy, x0, y0] = cv2.fitLine(best_c, cv2.DIST_L2, 0, 0.01, 0.01)
+                    line_tilt = float(math.degrees(math.atan2(vy[0], vx[0])))
+                    if line_tilt > 90: line_tilt -= 180
+                    elif line_tilt < -90: line_tilt += 180
 
                 self.line_tilt_deg = line_tilt
                 self.line_length_px = line_len
