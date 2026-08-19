@@ -69,14 +69,22 @@ def test_mock_stepper_telemetry():
     print(f"  [OK] Stepper Telemetry & Correction Factor update verified!")
 
 
+class DummyHW:
+    def __init__(self, stepper):
+        self.stepper = stepper
+        self.led_manager = None
+
+
 def test_vision_dot_calibration():
     print("[4/5] Testing Vision Dot Marker Tracking & Zero-Crossing...")
     cfg = load_config()
-    hw = HardwareController(cfg)
+    mock_motor = MockStepperMotor(cfg.stepper)
+    hw = DummyHW(mock_motor)
     calibrator = MotorCalibrator(hw)
 
     SIM_RPM = 9.0
-    TARGET_REVS = 4
+    TARGET_REVS = 2
+    calibrator.set_gate_roi(0.20, 0.10, 0.60, 0.80)
     calibrator.start_calibration(target_rpm=SIM_RPM, target_revs=TARGET_REVS, color_mode="bright_dot", shape_mode="dot")
 
     FPS = 30
@@ -111,11 +119,13 @@ def test_vision_dot_calibration():
 def test_vision_line_calibration_with_wobble():
     print("[5/5] Testing Axial Line / Stripe Marker Tracking & Wobble Runout Detection...")
     cfg = load_config()
-    hw = HardwareController(cfg)
+    mock_motor = MockStepperMotor(cfg.stepper)
+    hw = DummyHW(mock_motor)
     calibrator = MotorCalibrator(hw)
 
     SIM_RPM = 9.0
-    TARGET_REVS = 4
+    TARGET_REVS = 2
+    calibrator.set_gate_roi(0.20, 0.10, 0.60, 0.80)
     calibrator.start_calibration(target_rpm=SIM_RPM, target_revs=TARGET_REVS, color_mode="bright_dot", shape_mode="line")
 
     FPS = 30

@@ -309,10 +309,29 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px;">
                     <!-- Left: Live Vision Feed & HUD -->
                     <div>
-                        <div class="cam-wrapper" style="border: 1px solid rgba(6, 182, 212, 0.3); height: 420px; position: relative;">
-                            <button onclick="toggleCamFullscreen('cal-cam-stream')" style="position: absolute; top: 10px; right: 10px; padding: 6px 12px; font-size: 12px; background: rgba(10,15,30,0.85); border: 1px solid var(--accent-cyan); border-radius: 6px; color: var(--accent-cyan); z-index: 10; cursor: pointer;">⛶ Fullscreen HUD</button>
-                            <img id="cal-cam-stream" class="cam-feed" src="" alt="Calibrator Vision HUD Stream" style="height: 100%; object-fit: contain;">
+                        <div id="cal-cam-container" class="cam-wrapper" style="border: 1px solid rgba(6, 182, 212, 0.3); height: 420px; position: relative; overflow: hidden; user-select: none;">
+                            <button onclick="toggleCamFullscreen('cal-cam-stream')" style="position: absolute; top: 10px; right: 10px; padding: 6px 12px; font-size: 12px; background: rgba(10,15,30,0.85); border: 1px solid var(--accent-cyan); border-radius: 6px; color: var(--accent-cyan); z-index: 25; cursor: pointer;">⛶ Fullscreen</button>
+                            <img id="cal-cam-stream" class="cam-feed" src="" alt="Calibrator Vision HUD Stream" style="height: 100%; width: 100%; object-fit: contain; pointer-events: none;">
+                            
+                            <!-- Interactive Draggable & Resizable Optical Gate Overlay -->
+                            <div id="optical-gate-overlay" style="position: absolute; left: 26%; top: 18%; width: 28%; height: 62%; border: 2px dashed #00ffff; background: rgba(0, 255, 255, 0.08); box-shadow: 0 0 14px rgba(0,255,255,0.4); cursor: move; z-index: 15; touch-action: none; border-radius: 4px;">
+                                <div id="gate-header" style="background: rgba(0, 200, 255, 0.85); color: #000; font-size: 10px; font-weight: 800; padding: 2px 6px; display: flex; justify-content: space-between; align-items: center; cursor: move; user-select: none;">
+                                    <span>✥ DRAG GATE</span>
+                                    <span id="gate-coords-label" style="font-family: var(--font-mono); font-size: 9px;">28x62%</span>
+                                </div>
+                                <div style="position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: rgba(255, 165, 0, 0.8); pointer-events: none;"></div>
+                                <div id="gate-resize-handle" style="position: absolute; bottom: 0; right: 0; width: 20px; height: 20px; background: rgba(0, 255, 255, 0.85); cursor: se-resize; border-radius: 4px 0 2px 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #000; font-weight: bold; user-select: none;">⤡</div>
+                            </div>
                         </div>
+
+                        <!-- Quick Gate Position Helpers -->
+                        <div style="display: flex; gap: 6px; margin-top: 6px; align-items: center; flex-wrap: wrap;">
+                            <span style="font-size: 11px; color: var(--text-muted);">✥ Gate Presets:</span>
+                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(6,182,212,0.15); color: var(--accent-cyan); border-radius: 4px;" onclick="setGatePreset(0.26, 0.18, 0.28, 0.62)">Center Vial</button>
+                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(255,255,255,0.06); border-radius: 4px;" onclick="setGatePreset(0.20, 0.15, 0.40, 0.70)">Wide Gate</button>
+                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(255,255,255,0.06); border-radius: 4px;" onclick="setGatePreset(0.30, 0.25, 0.20, 0.50)">Tight Gate</button>
+                        </div>
+
                         <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
                             <button class="primary" style="flex: 1; min-width: 130px;" onclick="startMotorAutoCal()">▶ Start Auto-Cal</button>
                             <button class="danger" style="flex: 0.8; min-width: 90px;" onclick="stopMotorAutoCal()">⏹ Stop</button>
@@ -926,7 +945,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             const vol = parseInt(document.getElementById('proj-vol-slider').value);
             postAPI('/api/experimental/play', {video: filename, volume: vol});
         }
-        function stopExpVideo() {
+        async function stopExpVideo() {
             postAPI('/api/experimental/stop');
         }
 
@@ -937,11 +956,12 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             const img = document.getElementById('cal-cam-stream');
             if (panel.style.display === 'none' || !panel.style.display) {
                 panel.style.display = 'block';
-                btn.innerHTML = '▲ Close Motor Auto-Calibration Studio';
+                btn.innerHTML = '❌ Close Motor Auto-Calibration Studio ▲';
                 btn.style.background = 'rgba(239, 68, 68, 0.2)';
                 btn.style.color = 'var(--accent-rose)';
                 btn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
                 img.src = '/api/calibrate/motor/stream';
+                setTimeout(initOpticalGate, 80);
             } else {
                 panel.style.display = 'none';
                 btn.innerHTML = '🎯 Open Motor Auto-Calibration Studio (Live Vision HUD &amp; Controls) ▼';
@@ -950,6 +970,111 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 btn.style.borderColor = 'var(--accent-cyan)';
                 img.src = '';
             }
+        }
+
+        // Draggable & Resizable Optical Gate Controller
+        let gateState = { x: 0.26, y: 0.18, w: 0.28, h: 0.62 };
+        let isDraggingGate = false;
+        let isResizingGate = false;
+        let dragStart = { mouseX: 0, mouseY: 0, gateX: 0, gateY: 0, gateW: 0, gateH: 0 };
+        let saveGateTimeout = null;
+
+        function updateGateDOM() {
+            const container = document.getElementById('cal-cam-container');
+            const gate = document.getElementById('optical-gate-overlay');
+            if (!container || !gate) return;
+            
+            gate.style.left = (gateState.x * 100) + '%';
+            gate.style.top = (gateState.y * 100) + '%';
+            gate.style.width = (gateState.w * 100) + '%';
+            gate.style.height = (gateState.h * 100) + '%';
+            
+            const label = document.getElementById('gate-coords-label');
+            if (label) {
+                label.innerText = Math.round(gateState.w * 100) + 'x' + Math.round(gateState.h * 100) + '%';
+            }
+        }
+
+        function initOpticalGate() {
+            const gate = document.getElementById('optical-gate-overlay');
+            const resizeHandle = document.getElementById('gate-resize-handle');
+            const container = document.getElementById('cal-cam-container');
+            if (!gate || !resizeHandle || !container) return;
+
+            updateGateDOM();
+
+            function onPointerDown(e) {
+                const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0].clientX);
+                const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0].clientY);
+                if (e.target === resizeHandle) {
+                    isResizingGate = true;
+                } else {
+                    isDraggingGate = true;
+                }
+                dragStart = {
+                    mouseX: clientX,
+                    mouseY: clientY,
+                    gateX: gateState.x,
+                    gateY: gateState.y,
+                    gateW: gateState.w,
+                    gateH: gateState.h
+                };
+                window.addEventListener('pointermove', onPointerMove);
+                window.addEventListener('pointerup', onPointerUp);
+                window.addEventListener('touchmove', onPointerMove, {passive: false});
+                window.addEventListener('touchend', onPointerUp);
+                e.preventDefault();
+            }
+
+            function onPointerMove(e) {
+                if (!isDraggingGate && !isResizingGate) return;
+                const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0].clientX);
+                const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0].clientY);
+                const cw = container.clientWidth || 1;
+                const ch = container.clientHeight || 1;
+
+                const dx = (clientX - dragStart.mouseX) / cw;
+                const dy = (clientY - dragStart.mouseY) / ch;
+
+                if (isDraggingGate) {
+                    gateState.x = Math.max(0.0, Math.min(1.0 - gateState.w, dragStart.gateX + dx));
+                    gateState.y = Math.max(0.0, Math.min(1.0 - gateState.h, dragStart.gateY + dy));
+                } else if (isResizingGate) {
+                    gateState.w = Math.max(0.05, Math.min(1.0 - dragStart.gateX, dragStart.gateW + dx));
+                    gateState.h = Math.max(0.05, Math.min(1.0 - dragStart.gateY, dragStart.gateH + dy));
+                }
+                updateGateDOM();
+
+                clearTimeout(saveGateTimeout);
+                saveGateTimeout = setTimeout(saveGateToServer, 120);
+                if (e.cancelable) e.preventDefault();
+            }
+
+            function onPointerUp() {
+                isDraggingGate = false;
+                isResizingGate = false;
+                window.removeEventListener('pointermove', onPointerMove);
+                window.removeEventListener('pointerup', onPointerUp);
+                window.removeEventListener('touchmove', onPointerMove);
+                window.removeEventListener('touchend', onPointerUp);
+                saveGateToServer();
+            }
+
+            gate.addEventListener('pointerdown', onPointerDown);
+            gate.addEventListener('touchstart', onPointerDown, {passive: false});
+        }
+
+        async function saveGateToServer() {
+            try {
+                await postAPI('/api/calibrate/gate', gateState);
+            } catch (e) {}
+        }
+
+        function setGatePreset(x, y, w, h) {
+            gateState = { x: x, y: y, w: w, h: h };
+            updateGateDOM();
+            saveGateToServer();
+            showToast('Optical Gate set to ' + Math.round(w*100) + 'x' + Math.round(h*100) + '%');
         }
 
         // Toggle Camera Fullscreen
@@ -1678,6 +1803,13 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if parsed.path == "/api/calibrate/gate":
+            if self.motor_calibrator:
+                self._send_json(self.motor_calibrator.get_gate_roi())
+            else:
+                self._send_json({"x": 0.26, "y": 0.18, "w": 0.28, "h": 0.62})
+            return
+
         if parsed.path == "/api/telemetry/logs":
             log_dir = Path.home() / "OpenCAL-alternative" / "telemetry_logs"
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -1797,6 +1929,18 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
             if self.motor_calibrator:
                 res = self.motor_calibrator.apply_correction()
                 self._send_json(res)
+            else:
+                self._send_json({"error": "Motor calibrator unavailable"}, status=500)
+            return
+
+        if parsed.path == "/api/calibrate/gate":
+            if self.motor_calibrator:
+                gx = float(data.get("x", 0.26))
+                gy = float(data.get("y", 0.18))
+                gw = float(data.get("w", 0.28))
+                gh = float(data.get("h", 0.62))
+                res = self.motor_calibrator.set_gate_roi(gx, gy, gw, gh)
+                self._send_json({"success": True, "gate": res})
             else:
                 self._send_json({"error": "Motor calibrator unavailable"}, status=500)
             return

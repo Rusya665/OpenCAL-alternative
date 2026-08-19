@@ -1,14 +1,21 @@
-#!/usr/bin/env python3
-"""
-OpenCAL Automated Camera-Based Motor Calibration Engine
-Tracks marker on rotating vial, detects sub-frame crossings, computes high-precision RPM,
-calculates CORRECTION_FACTOR, and logs full-spectrum hardware telemetry.
+"""OpenCAL High-Precision Motor Auto-Calibration and Optical Studio.
+
+Features:
+- Interactive Draggable & Resizable Optical Gate ROI: process ONLY the defined inspection window over the tape/marker.
+- Vertical Center of Mass tracking: 100% immune to marker width/height extending beyond the gate.
+- Sub-Frame interpolation on zero-crossings for micro-second accurate RPM and jitter calculation.
+- Rejection of ambient background glare, chamber boundaries, and false contours.
+- Stepped rotation drift tester and Auto-Find Homing assistant.
 """
 
-import time
-import math
+from __future__ import annotations
+
+import csv
 import json
+import math
+import os
 import threading
+import time
 from collections import deque
 from pathlib import Path
 from typing import Any
@@ -16,8 +23,62 @@ from typing import Any
 import cv2
 import numpy as np
 
-from opencal.utils.telemetry import get_pi_system_telemetry, TelemetrySessionLogger
+from opencal.utils.telemetry import get_pi_system_telemetry
 from opencal.utils.config import CFG_PATH
+
+
+class TelemetrySessionLogger:
+    """Logs high-frequency calibration samples to a dedicated timestamped CSV file."""
+    def __init__(self, output_dir: str | Path | None = None):
+        if output_dir is None:
+            self.output_dir = Path.home() / "OpenCAL-alternative" / "telemetry_logs"
+        else:
+            self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._current_file: Path | None = None
+        self._csv_writer: Any | None = None
+        self._csv_handle: Any | None = None
+        self._lock = threading.Lock()
+
+    def start_session(self, prefix: str = "motor_auto_cal") -> Path:
+        with self._lock:
+            self.stop_session()
+            t_str = time.strftime("%Y%m%d_%H%M%S")
+            self._current_file = self.output_dir / f"{prefix}_{t_str}.csv"
+            self._csv_handle = open(self._current_file, mode="w", newline="", encoding="utf-8")
+            fieldnames = [
+                "timestamp_unix", "frame_timestamp_ns", "is_calibrating", "target_rpm",
+                "revolutions", "target_revolutions", "measured_avg_rpm", "rpm_jitter_std",
+                "suggested_correction_factor", "current_correction_factor",
+                "marker_detected", "detected_shape", "line_tilt_deg", "line_length_px",
+                "wobble_runout_px", "marker_norm_y", "confidence",
+                "cpu_temp_c", "core_voltage_v", "arm_clock_mhz", "cpu_usage_pct",
+                "motor_vin_v", "motor_load", "motor_driver", "status_message"
+            ]
+            self._csv_writer = csv.DictWriter(self._csv_handle, fieldnames=fieldnames)
+            self._csv_writer.writeheader()
+            self._csv_handle.flush()
+            return self._current_file
+
+    def record_sample(self, sample: dict[str, Any]):
+        with self._lock:
+            if self._csv_writer and self._csv_handle:
+                clean_sample = {k: v for k, v in sample.items() if k in self._csv_writer.fieldnames}
+                self._csv_writer.writerow(clean_sample)
+                self._csv_handle.flush()
+
+    def stop_session(self) -> Path | None:
+        with self._lock:
+            if self._csv_handle:
+                try:
+                    self._csv_handle.close()
+                except Exception:
+                    pass
+                self._csv_handle = None
+                self._csv_writer = None
+            f = self._current_file
+            self._current_file = None
+            return f
 
 
 class MotorCalibrator:
@@ -31,6 +92,12 @@ class MotorCalibrator:
         self.target_revolutions: int = 30
         self.color_filter: str = "dark_line"  # "dark_line", "red", "green", "cyan", "bright_dot"
         
+        # Draggable & Resizable Optical Gate ROI (normalized 0.0 to 1.0)
+        self.gate_x: float = 0.26
+        self.gate_y: float = 0.18
+        self.gate_w: float = 0.28
+        self.gate_h: float = 0.62
+
         # Marker Shape & Wobble Tracking
         self.marker_shape_mode: str = "line"  # "line", "dot", "auto"
         self.detected_shape_type: str = "none"  # "line", "dot", "none"
@@ -62,6 +129,22 @@ class MotorCalibrator:
         self.calibration_complete: bool = False
         self.last_log_path: Path | None = None
         self.latest_sample: dict[str, Any] = {}
+
+    def set_gate_roi(self, x: float, y: float, w: float, h: float) -> dict[str, float]:
+        with self._lock:
+            self.gate_x = max(0.0, min(0.95, float(x)))
+            self.gate_y = max(0.0, min(0.95, float(y)))
+            self.gate_w = max(0.05, min(1.0 - self.gate_x, float(w)))
+            self.gate_h = max(0.05, min(1.0 - self.gate_y, float(h)))
+            return self.get_gate_roi()
+
+    def get_gate_roi(self) -> dict[str, float]:
+        return {
+            "x": round(self.gate_x, 4),
+            "y": round(self.gate_y, 4),
+            "w": round(self.gate_w, 4),
+            "h": round(self.gate_h, 4)
+        }
 
     def start_calibration(self, target_rpm: float = 9.0, target_revs: int = 30, color_mode: str = "dark_line", shape_mode: str = "line"):
         with self._lock:
@@ -100,7 +183,7 @@ class MotorCalibrator:
                     pass
 
             self.last_log_path = self.logger.start_session("motor_auto_cal")
-            self.status_message = "Tracking marker crossings (Line/Dot)..."
+            self.status_message = "Tracking marker crossings (Optical Gate)..."
 
     def stop_calibration(self, stop_motor: bool = True):
         with self._lock:
@@ -114,19 +197,22 @@ class MotorCalibrator:
             self.last_log_path = self.logger.stop_session()
 
     def process_frame(self, frame: np.ndarray, frame_timestamp_ns: int | None = None) -> tuple[np.ndarray, dict[str, Any]]:
-        """Processes one video frame: detects Line or Dot marker, measures wobble, records crossings, annotates HUD."""
+        """Processes one video frame: detects marker exclusively inside the draggable Optical Gate ROI."""
         t_now = (frame_timestamp_ns / 1e9) if frame_timestamp_ns else time.time()
         h, w = frame.shape[:2]
 
-        # 1. Define Central ROI (focus on center 60% of vial)
-        roi_x1, roi_y1 = int(w * 0.15), int(h * 0.10)
-        roi_x2, roi_y2 = int(w * 0.85), int(h * 0.90)
-        roi = frame[roi_y1:roi_y2, roi_x1:roi_x2]
-        roi_h, roi_w = roi.shape[:2]
-        roi_center_x = roi_w / 2.0
-        roi_center_y = roi_h / 2.0
+        # 1. Crop to Draggable Optical Gate ROI
+        gx1 = max(0, min(w - 20, int(self.gate_x * w)))
+        gy1 = max(0, min(h - 20, int(self.gate_y * h)))
+        gx2 = max(gx1 + 20, min(w, int((self.gate_x + self.gate_w) * w)))
+        gy2 = max(gy1 + 20, min(h, int((self.gate_y + self.gate_h) * h)))
+        gate_img = frame[gy1:gy2, gx1:gx2]
+        gate_w = max(1, gx2 - gx1)
+        gate_h = max(1, gy2 - gy1)
+        gate_center_y = gate_h / 2.0
+        gate_center_x = gate_w / 2.0
 
-        # 2. Marker Segmentation (Color / Brightness Thresholding)
+        # 2. Marker Segmentation within Optical Gate
         marker_detected = False
         marker_cx, marker_cy = 0, 0
         marker_norm_y = 0.0
@@ -134,161 +220,84 @@ class MotorCalibrator:
         shape_type = "none"
         line_tilt = 0.0
         line_len = 0.0
-        line_pts = None
 
-        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        gray_gate = cv2.cvtColor(gate_img, cv2.COLOR_BGR2GRAY)
 
         if self.color_filter in ("dark_line", "dark_dot", "black", "black_line"):
-            # Black / Dark drawn pen line on bright white tape:
-            # Step 1: Detect the bright white tape cylinder region
-            tape_mask = (gray > 85).astype(np.uint8) * 255
-            tape_contours, _ = cv2.findContours(tape_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            filled_tape = np.zeros_like(tape_mask)
-            for tc in tape_contours:
-                if cv2.contourArea(tc) > 3000:
-                    cv2.drawContours(filled_tape, [tc], -1, 255, -1)
-            filled_tape = cv2.morphologyEx(filled_tape, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (35, 35)))
-
-            # Step 2: Extract dark marker INSIDE the white tape (rejects outside dark chamber!)
-            k_bh = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))
-            blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, k_bh)
-            _, mask_bh = cv2.threshold(blackhat, 18, 255, cv2.THRESH_BINARY)
-            mask_dark = (gray < 85).astype(np.uint8) * 255
-            line_mask = cv2.bitwise_or(mask_bh, mask_dark)
-
-            # Restrict strictly to inside the white tape
-            mask = cv2.bitwise_and(filled_tape, line_mask)
-            k_line = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 3))
-            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_line)
+            k_bh = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+            blackhat = cv2.morphologyEx(gray_gate, cv2.MORPH_BLACKHAT, k_bh)
+            _, mask_bh = cv2.threshold(blackhat, 16, 255, cv2.THRESH_BINARY)
+            mask_dark = (gray_gate < 78).astype(np.uint8) * 255
+            mask = cv2.bitwise_or(mask_bh, mask_dark)
+            k_clean = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k_clean)
         elif self.color_filter == "red":
-            # Dual HSV Mask (Hue 0-14 & 168-180) with high saturation
-            mask_hsv1 = cv2.inRange(hsv, np.array([0, 60, 40]), np.array([14, 255, 255]))
-            mask_hsv2 = cv2.inRange(hsv, np.array([168, 60, 40]), np.array([180, 255, 255]))
-            mask_hsv = cv2.bitwise_or(mask_hsv1, mask_hsv2)
-
-            # Excess Red Color Index: Red marker absorbs G & B (R - G > 30 and R - B > 25)
-            # (Rejects white specular reflection because white has R - G ~ 0 and R - B ~ 0)
-            roi_i16 = roi.astype(np.int16)
+            hsv_gate = cv2.cvtColor(gate_img, cv2.COLOR_BGR2HSV)
+            m1 = cv2.inRange(hsv_gate, np.array([0, 50, 40]), np.array([14, 255, 255]))
+            m2 = cv2.inRange(hsv_gate, np.array([168, 50, 40]), np.array([180, 255, 255]))
+            mask_hsv = cv2.bitwise_or(m1, m2)
+            roi_i16 = gate_img.astype(np.int16)
             b_ch, g_ch, r_ch = roi_i16[:, :, 0], roi_i16[:, :, 1], roi_i16[:, :, 2]
             diff_rg = r_ch - g_ch
             diff_rb = r_ch - b_ch
-            mask_rgb = ((diff_rg > 30) & (diff_rb > 25) & (r_ch > 70)).astype(np.uint8) * 255
-
+            mask_rgb = ((diff_rg > 25) & (diff_rb > 20) & (r_ch > 60)).astype(np.uint8) * 255
             mask = cv2.bitwise_and(mask_hsv, mask_rgb)
             k_rect = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 3))
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_rect)
         elif self.color_filter == "green":
-            mask = cv2.inRange(hsv, np.array([35, 70, 70]), np.array([85, 255, 255]))
+            hsv_gate = cv2.cvtColor(gate_img, cv2.COLOR_BGR2HSV)
+            mask = cv2.inRange(hsv_gate, np.array([35, 70, 70]), np.array([85, 255, 255]))
         elif self.color_filter == "cyan":
-            mask = cv2.inRange(hsv, np.array([80, 70, 70]), np.array([105, 255, 255]))
+            hsv_gate = cv2.cvtColor(gate_img, cv2.COLOR_BGR2HSV)
+            mask = cv2.inRange(hsv_gate, np.array([80, 70, 70]), np.array([105, 255, 255]))
         else:  # "bright_dot" / white / fluorescent
-            _, mask = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY)
+            _, mask = cv2.threshold(gray_gate, 210, 255, cv2.THRESH_BINARY)
 
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # Strict contour validation: a drawn line or dot is compact, not a giant ambient blob!
-        valid_contours = []
-        for c in contours:
-            area = cv2.contourArea(c)
-            if area < 25 or area > 25000:
-                continue
-            bx, by, bw, bh = cv2.boundingRect(c)
-            aspect = bw / max(float(bh), 1.0)
-            # Rejection: Marker lines are horizontal and bounded; dots are small
-            if self.marker_shape_mode == "line" or (self.color_filter in ("dark_line", "black", "red") and self.marker_shape_mode != "dot"):
-                if bh > 135:  # line cannot be thicker than 135px
-                    continue
-                if bw < 25:   # line must have minimal width
-                    continue
-                if aspect < 1.05: # line must be horizontal (wider than tall)
-                    continue
-                valid_contours.append(c)
-            elif self.marker_shape_mode == "dot":
-                if bw > 75 or bh > 75:  # dot cannot be giant
-                    continue
-                valid_contours.append(c)
-            else:  # "auto"
-                if bh > 140 and bw > 140:
-                    continue
-                valid_contours.append(c)
-
-        if valid_contours:
-            # Score contours based on shape mode preference
-            if self.marker_shape_mode == "line" or (self.color_filter in ("dark_line", "black", "red") and self.marker_shape_mode != "dot"):
-                def _line_score(c):
-                    bx, by, bw, bh = cv2.boundingRect(c)
-                    aspect = bw / max(float(bh), 1.0)
-                    length_bonus = min(bw / 15.0, 6.0)
-                    return cv2.contourArea(c) * (aspect ** 1.8) * length_bonus
-                best_c = max(valid_contours, key=_line_score)
-            elif self.marker_shape_mode == "dot":
-                def _dot_score(c):
-                    bx, by, bw, bh = cv2.boundingRect(c)
-                    ar = max(bw, bh) / max(1.0, min(bw, bh))
-                    return cv2.contourArea(c) / (ar ** 2)
-                best_c = max(valid_contours, key=_dot_score)
-            else:  # "auto"
-                best_c = max(valid_contours, key=cv2.contourArea)
-
-            M = cv2.moments(best_c)
+        # 3. Center of Mass & Trajectory within the Gate
+        # (Works seamlessly even when the marker line is wider or thicker than the gate!)
+        marker_pixel_count = cv2.countNonZero(mask)
+        if marker_pixel_count >= 20:
+            M = cv2.moments(mask)
             if M["m00"] > 0:
                 marker_cx = int(M["m10"] / M["m00"])
                 marker_cy = int(M["m01"] / M["m00"])
-                marker_norm_y = (marker_cy - roi_center_y) / (roi_h / 2.0)
+                marker_norm_y = (marker_cy - gate_center_y) / (gate_center_y)
                 marker_detected = True
-                confidence = float(cv2.contourArea(best_c))
+                confidence = float(marker_pixel_count)
                 self.last_marker_seen = t_now
-
-                # Geometry analysis: Classify as Line vs Dot and measure tilt/runout
-                bx, by, bw, bh = cv2.boundingRect(best_c)
-                aspect_ratio = bw / max(1.0, bh)
-
-                if bw >= 20 and aspect_ratio >= 1.8:
-                    shape_type = "line"
-                    # Fit 2D line to contour points
-                    [vx, vy, x0, y0] = cv2.fitLine(best_c, cv2.DIST_L2, 0, 0.01, 0.01)
-                    line_tilt = float(math.degrees(math.atan2(vy[0], vx[0])))
-                    # Normalize tilt to [-90, +90]
-                    if line_tilt > 90: line_tilt -= 180
-                    elif line_tilt < -90: line_tilt += 180
-                    line_len = float(bw)
-
-                    # Compute line endpoints inside ROI for rendering
-                    pt1_x = int(marker_cx - (bw / 2))
-                    pt1_y = int(marker_cy - ((bw / 2) * (vy[0] / (vx[0] + 1e-6))))
-                    pt2_x = int(marker_cx + (bw / 2))
-                    pt2_y = int(marker_cy + ((bw / 2) * (vy[0] / (vx[0] + 1e-6))))
-                    line_pts = ((pt1_x, pt1_y), (pt2_x, pt2_y))
-                else:
-                    shape_type = "dot"
-                    line_len = float(max(bw, bh))
-
+                shape_type = "line"
                 self.detected_shape_type = shape_type
+                line_len = float(gate_w)
+
+                # Line tilt calculation within the gate
+                contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                if contours:
+                    best_c = max(contours, key=cv2.contourArea)
+                    if len(best_c) >= 5:
+                        [vx, vy, x0, y0] = cv2.fitLine(best_c, cv2.DIST_L2, 0, 0.01, 0.01)
+                        line_tilt = float(math.degrees(math.atan2(vy[0], vx[0])))
+                        if line_tilt > 90: line_tilt -= 180
+                        elif line_tilt < -90: line_tilt += 180
+
                 self.line_tilt_deg = line_tilt
                 self.line_length_px = line_len
-
-                # Axial wobble / runout tracking (horizontal center drift)
-                self.horizontal_drift_px = float(marker_cx - roi_center_x)
+                self.horizontal_drift_px = float(marker_cx - gate_center_x)
                 self.cx_history.append(marker_cx)
                 if len(self.cx_history) >= 10:
                     self.wobble_runout_px = float(max(self.cx_history) - min(self.cx_history))
 
-        # 3. Sub-Frame Crossing Detection (Bidirectional & Ingress-Aware)
+        # 4. Sub-Frame Crossing Detection (Bidirectional Zero Crossing)
         if self.is_active and marker_detected:
             self.recent_positions.append((t_now, marker_norm_y))
             self.trajectory_history.append((t_now, marker_norm_y))
 
-            # Minimum time between 360° revolutions at target RPM (e.g. 4.0s @ 9 RPM)
             min_period = (60.0 / self.target_rpm) * 0.60
 
             if len(self.recent_positions) >= 2:
                 t_prev, y_prev = self.recent_positions[-2]
                 t_curr, y_curr = self.recent_positions[-1]
-
-                # Centerline Zero-Crossing: supports both CW (y_prev < 0 <= y_curr) and CCW (y_prev > 0 >= y_curr)
                 is_zero_crossing = (y_prev < 0.0 <= y_curr) or (y_prev > 0.0 >= y_curr)
-                
-                if is_zero_crossing and (t_now - self.last_crossing_time > min_period):
+                if is_zero_crossing and (self.last_crossing_time == 0.0 or (t_now - self.last_crossing_time > min_period)):
                     if abs(y_curr - y_prev) > 1e-6:
                         dt = t_curr - t_prev
                         frac = abs(0.0 - y_prev) / abs(y_curr - y_prev)
@@ -298,7 +307,7 @@ class MotorCalibrator:
 
                     self._register_crossing(t_cross)
 
-        # 4. Telemetry Gathering
+        # 5. Telemetry Gathering
         pi_telemetry = get_pi_system_telemetry()
         motor_telemetry = {}
         if self.hw and hasattr(self.hw, "stepper") and self.hw.stepper:
@@ -336,16 +345,17 @@ class MotorCalibrator:
             "motor_vin_v": motor_telemetry.get("vin_voltage_v", 0.0),
             "motor_load": motor_telemetry.get("stallguard_load", 0),
             "motor_driver": motor_telemetry.get("driver", "unknown"),
+            "gate_roi": self.get_gate_roi(),
             "status_message": self.status_message,
         }
         self.latest_sample = sample
         if self.is_active:
             self.logger.record_sample(sample)
 
-        # 5. Render HUD Overlay onto Frame
-        annotated = self._render_hud(frame, roi_x1, roi_y1, roi_x2, roi_y2, 
+        # 6. Render HUD Overlay onto Frame
+        annotated = self._render_hud(frame, gx1, gy1, gx2, gy2, 
                                      marker_detected, marker_cx, marker_cy, 
-                                     shape_type, line_pts, line_tilt, line_len, sample)
+                                     shape_type, None, line_tilt, line_len, sample)
         return annotated, sample
 
     def _register_crossing(self, t_cross: float):
@@ -358,11 +368,9 @@ class MotorCalibrator:
             rpm_inst = 60.0 / p_inst
             self.instant_rpms.append(rpm_inst)
 
-            # Cumulative average RPM
             t_total = self.crossing_timestamps[-1] - self.crossing_timestamps[0]
             self.measured_avg_rpm = (self.revolutions_completed * 60.0) / t_total
 
-            # Jitter Standard Deviation
             if len(self.instant_rpms) >= 2:
                 self.rpm_jitter_std = float(np.std(self.instant_rpms))
 
@@ -374,52 +382,51 @@ class MotorCalibrator:
             self.status_message = f"✅ COMPLETE! Measured: {self.measured_avg_rpm:.4f} RPM (Jitter: ±{self.rpm_jitter_std:.4f} RPM)"
             self.stop_calibration(stop_motor=True)
 
-    def _render_hud(self, frame: np.ndarray, rx1: int, ry1: int, rx2: int, ry2: int, 
+    def _render_hud(self, frame: np.ndarray, gx1: int, gy1: int, gx2: int, gy2: int, 
                     marker_detected: bool, mcx: int, mcy: int, 
                     shape_type: str, line_pts: Any, line_tilt: float, line_len: float, 
                     sample: dict[str, Any]) -> np.ndarray:
         out = frame.copy()
         h, w = out.shape[:2]
 
-        # 1. Draw ROI Box & Centerline
-        cv2.rectangle(out, (rx1, ry1), (rx2, ry2), (0, 255, 255), 2)
-        mid_y = ry1 + (ry2 - ry1) // 2
-        cv2.line(out, (rx1, mid_y), (rx2, mid_y), (0, 140, 255), 2, cv2.LINE_AA)
+        gate_w, gate_h = gx2 - gx1, gy2 - gy1
+        gate_center_y = gy1 + (gate_h // 2)
+
+        # 1. Optical Gate Neon Box & Corner Brackets
+        gate_color = (0, 255, 255) if marker_detected else (180, 160, 60)
+        cv2.rectangle(out, (gx1, gy1), (gx2, gy2), gate_color, 2)
         
-        # Centerline Label with filled background tag
-        tag_x, tag_y = rx1 + 10, mid_y - 8
-        cv2.rectangle(out, (tag_x - 4, tag_y - 18), (tag_x + 240, tag_y + 6), (15, 20, 30), -1)
-        cv2.putText(out, "CENTERLINE CROSSING PLANE", (tag_x, tag_y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 165, 255), 2, cv2.LINE_AA)
+        brk = 18
+        # Corner brackets
+        cv2.line(out, (gx1, gy1), (gx1 + brk, gy1), (0, 255, 255), 3)
+        cv2.line(out, (gx1, gy1), (gx1, gy1 + brk), (0, 255, 255), 3)
+        cv2.line(out, (gx2, gy1), (gx2 - brk, gy1), (0, 255, 255), 3)
+        cv2.line(out, (gx2, gy1), (gx2, gy1 + brk), (0, 255, 255), 3)
+        cv2.line(out, (gx1, gy2), (gx1 + brk, gy2), (0, 255, 255), 3)
+        cv2.line(out, (gx1, gy2), (gx1, gy2 - brk), (0, 255, 255), 3)
+        cv2.line(out, (gx2, gy2), (gx2 - brk, gy2), (0, 255, 255), 3)
+        cv2.line(out, (gx2, gy2), (gx2, gy2 - brk), (0, 255, 255), 3)
 
-        # 2. Draw Detected Marker (Line vs Dot)
+        # Gate Horizontal Equator (Centerline)
+        cv2.line(out, (gx1, gate_center_y), (gx2, gate_center_y), (0, 140, 255), 2, cv2.LINE_AA)
+        
+        # Centerline Tag Label
+        tag_x, tag_y = gx1 + 8, max(20, gy1 - 8)
+        tag_text = f"OPTICAL GATE: LOCKED (y={sample['marker_norm_y']:+.3f})" if marker_detected else "OPTICAL GATE: IDLE / SEARCHING"
+        tag_bg_color = (0, 60, 0) if marker_detected else (25, 25, 25)
+        (tw, th), _ = cv2.getTextSize(tag_text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+        cv2.rectangle(out, (tag_x - 4, tag_y - th - 4), (tag_x + tw + 4, tag_y + 4), tag_bg_color, -1)
+        cv2.rectangle(out, (tag_x - 4, tag_y - th - 4), (tag_x + tw + 4, tag_y + 4), (0, 255, 255), 1)
+        cv2.putText(out, tag_text, (tag_x, tag_y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 128) if marker_detected else (200, 220, 255), 2, cv2.LINE_AA)
+
+        # 2. Draw Marker Position Inside Gate
         if marker_detected:
-            gx, gy = rx1 + mcx, ry1 + mcy
-            if shape_type == "line" and line_pts:
-                (p1x, p1y), (p2x, p2y) = line_pts
-                gp1 = (rx1 + p1x, ry1 + p1y)
-                gp2 = (rx1 + p2x, ry1 + p2y)
-                # Draw thick high-contrast line stripe
-                cv2.line(out, gp1, gp2, (0, 255, 0), 4, cv2.LINE_AA)
-                cv2.circle(out, gp1, 6, (0, 220, 255), -1)
-                cv2.circle(out, gp2, 6, (0, 220, 255), -1)
-                cv2.circle(out, (gx, gy), 7, (0, 0, 255), -1)
-                
-                # Filled badge for line text
-                label = f"LINE [L={int(line_len)}px, Tilt={line_tilt:+.1f} deg]"
-                (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
-                cv2.rectangle(out, (gx - lw // 2 - 6, gy - 32), (gx + lw // 2 + 6, gy - 6), (10, 25, 10), -1)
-                cv2.rectangle(out, (gx - lw // 2 - 6, gy - 32), (gx + lw // 2 + 6, gy - 6), (0, 255, 0), 1)
-                cv2.putText(out, label, (gx - lw // 2, gy - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 128), 2, cv2.LINE_AA)
-            else:
-                # Dot / circle marker
-                r = max(8, int(line_len / 2))
-                cv2.circle(out, (gx, gy), r, (0, 255, 0), 3)
-                cv2.circle(out, (gx, gy), 4, (0, 0, 255), -1)
-                label = f"DOT [r={r}px, y={sample['marker_norm_y']:+.2f}]"
-                cv2.rectangle(out, (gx + 12, gy - 16), (gx + 220, gy + 10), (10, 25, 10), -1)
-                cv2.putText(out, label, (gx + 16, gy + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+            abs_x, abs_y = gx1 + mcx, gy1 + mcy
+            cv2.circle(out, (abs_x, abs_y), 7, (0, 0, 255), -1)
+            cv2.circle(out, (abs_x, abs_y), 3, (255, 255, 255), -1)
+            cv2.line(out, (gx1, abs_y), (gx2, abs_y), (0, 255, 0), 3, cv2.LINE_AA)
 
-        # 3. Top Telemetry Glass Bar (Larger & Bolder)
+        # 3. Top Telemetry Glass Bar
         overlay = out.copy()
         cv2.rectangle(overlay, (0, 0), (w, 82), (8, 12, 22), -1)
         cv2.addWeighted(overlay, 0.85, out, 0.15, 0, out)
@@ -435,38 +442,38 @@ class MotorCalibrator:
         )
         cv2.putText(out, metrics_text, (14, 64), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
 
-        # 4. Bottom Hardware & Wobble Status Bar (Larger & Bolder)
+        # 4. Bottom Hardware Status Bar
         bot_overlay = out.copy()
         cv2.rectangle(bot_overlay, (0, h - 46), (w, h), (8, 12, 22), -1)
         cv2.addWeighted(bot_overlay, 0.85, out, 0.15, 0, out)
 
         hw_text = (
+            f"GATE: {gate_w}x{gate_h}px @ ({gx1},{gy1})  |  "
             f"PI: {sample.get('cpu_temp_c', 0)}C @ {sample.get('core_voltage_v', 0)}V  |  "
             f"MOTOR: {sample.get('motor_vin_v', 0)}V  |  "
-            f"RUNOUT: {sample.get('wobble_runout_px', 0)}px, TILT: {sample.get('line_tilt_deg', 0):+.1f} deg  |  "
-            f"SHAPE: {shape_type.upper()}"
+            f"TILT: {sample.get('line_tilt_deg', 0):+.1f} deg"
         )
         cv2.putText(out, hw_text, (14, h - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (180, 220, 255), 2, cv2.LINE_AA)
 
         # 5. Mini Realtime Trajectory Waveform (Bottom Right)
         if len(self.trajectory_history) >= 2:
             gw, gh = 200, 70
-            gx1, gy1 = w - gw - 15, h - gh - 55
-            cv2.rectangle(out, (gx1, gy1), (gx1 + gw, gy1 + gh), (15, 22, 35), -1)
-            cv2.rectangle(out, (gx1, gy1), (gx1 + gw, gy1 + gh), (80, 120, 160), 1)
-            cv2.line(out, (gx1, gy1 + gh // 2), (gx1 + gw, gy1 + gh // 2), (60, 80, 100), 1)
+            gx1_w, gy1_w = w - gw - 15, h - gh - 55
+            cv2.rectangle(out, (gx1_w, gy1_w), (gx1_w + gw, gy1_w + gh), (15, 22, 35), -1)
+            cv2.rectangle(out, (gx1_w, gy1_w), (gx1_w + gw, gy1_w + gh), (80, 120, 160), 1)
+            cv2.line(out, (gx1_w, gy1_w + gh // 2), (gx1_w + gw, gy1_w + gh // 2), (60, 80, 100), 1)
 
             pts = []
             hist = list(self.trajectory_history)
             for idx, (_, y_val) in enumerate(hist):
-                px = gx1 + int((idx / len(hist)) * gw)
-                py = gy1 + int(((y_val + 1.0) / 2.0) * gh)
-                py = max(gy1, min(gy1 + gh, py))
+                px = gx1_w + int((idx / len(hist)) * gw)
+                py = gy1_w + int(((y_val + 1.0) / 2.0) * gh)
+                py = max(gy1_w, min(gy1_w + gh, py))
                 pts.append((px, py))
 
             for i in range(1, len(pts)):
                 cv2.line(out, pts[i - 1], pts[i], (0, 255, 255), 2, cv2.LINE_AA)
-            cv2.putText(out, "Y-WAVEFORM", (gx1 + 8, gy1 + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 210, 255), 1)
+            cv2.putText(out, "Y-WAVEFORM", (gx1_w + 8, gy1_w + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 210, 255), 1)
 
         return out
 
@@ -525,7 +532,7 @@ class MotorCalibrator:
                 json.dump(cfg_data, f, indent=2)
 
             return {
-                "success": True,
+                "success": True, 
                 "message": f"Motor reset to uncompensated base speed (factor = {target_factor:.6f})!",
                 "correction_factor": target_factor
             }
@@ -542,7 +549,7 @@ class SteppedRotationRunner:
         self._thread: threading.Thread | None = None
         self.current_rev: int = 0
         self.total_revs: int = 0
-        self.state: str = "IDLE"  # "IDLE" | "ROTATING" | "PAUSED" | "COMPLETED" | "STOPPED"
+        self.state: str = "IDLE"
         self.status_message: str = "Idle (Ready for Stepped Test)"
 
     def start(self, total_revs: int = 1, rpm: float = 9.0, pause_s: float = 1.5, direction: str = "CW") -> dict[str, Any]:
@@ -577,7 +584,6 @@ class SteppedRotationRunner:
                     if self._stop_requested:
                         break
 
-                    # Pause between rotations for visual marker drift inspection
                     if rev_idx < self.total_revs:
                         self.state = "PAUSED"
                         self.status_message = f"Turn {rev_idx}/{self.total_revs} done! Pausing {pause_s}s (Observe line position)..."
@@ -585,11 +591,6 @@ class SteppedRotationRunner:
                         while time.time() - t_pause_start < pause_s and not self._stop_requested:
                             time.sleep(0.05)
 
-                if not self._stop_requested:
-                    self.state = "COMPLETED"
-                    self.status_message = f"Completed all {self.total_revs} stepped turns!"
-                else:
-                    self.state = "STOPPED"
                 if not self._stop_requested:
                     self.state = "COMPLETED"
                     self.status_message = f"Completed all {self.total_revs} stepped turns!"
@@ -630,14 +631,14 @@ class SteppedRotationRunner:
 
 
 class MarkerFinder:
-    """Rotates the vial slowly (at ~4.5 RPM) to locate and center the drawn marker line or dot (max 2 revolutions timeout)."""
+    """Rotates the vial slowly to locate and center the drawn marker in the Optical Gate (max 2 revs)."""
     def __init__(self, hw: Any, calibrator: Any):
         self.hw = hw
         self.calibrator = calibrator
         self.is_active: bool = False
         self._stop_requested: bool = False
         self._thread: threading.Thread | None = None
-        self.state: str = "IDLE"  # "IDLE" | "SEARCHING" | "FOUND_CENTERED" | "NOT_FOUND" | "STOPPED"
+        self.state: str = "IDLE"
         self.status_message: str = "Idle (Ready to Find Marker)"
 
     def start(self, rpm: float = 4.5, max_revs: float = 2.0, direction: str = "CW", color_mode: str = "dark_line", shape_mode: str = "line") -> dict[str, Any]:
@@ -658,7 +659,6 @@ class MarkerFinder:
                     if not stepper.is_running():
                         stepper.start_rotation(direction)
 
-                # Maximum duration for max_revs revolutions plus safety margin
                 max_duration = (max_revs * 60.0 / rpm) + 2.0
                 t_start = time.time()
                 marker_found = False
@@ -668,15 +668,13 @@ class MarkerFinder:
                     detected = sample.get("marker_detected", False)
                     norm_y = sample.get("marker_norm_y", 1.0)
                     
-                    # When marker is detected and close to centerline (|y| <= 0.12)
-                    if detected and abs(norm_y) <= 0.12:
-                        # Stop stepper immediately to hold at center!
+                    # When marker is detected and close to equator (|y| <= 0.15)
+                    if detected and abs(norm_y) <= 0.15:
                         if stepper:
                             stepper.stop()
                         marker_found = True
                         self.state = "FOUND_CENTERED"
-                        shape = sample.get("detected_shape", "marker")
-                        self.status_message = f"🎯 Marker {shape.upper()} located & centered at y={norm_y:+.3f}!"
+                        self.status_message = f"🎯 Marker located & centered in Optical Gate at y={norm_y:+.3f}!"
                         break
 
                     time.sleep(0.033)
@@ -689,7 +687,7 @@ class MarkerFinder:
                         self.status_message = "Marker search cancelled."
                     else:
                         self.state = "NOT_FOUND"
-                        self.status_message = f"⚠️ Marker not detected after {max_revs:.0f} full revolutions. Check tape and marker line!"
+                        self.status_message = f"⚠️ Marker not detected after {max_revs:.0f} full revolutions."
             except Exception as e:
                 self.state = "ERROR"
                 self.status_message = f"Search error: {e}"

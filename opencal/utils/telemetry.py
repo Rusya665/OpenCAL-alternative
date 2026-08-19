@@ -21,13 +21,27 @@ def _read_file_safe(path: str) -> str | None:
         return None
 
 
-def get_pi_system_telemetry() -> dict[str, Any]:
-    """Query Raspberry Pi OS thermal, voltage, clock, throttle, and memory sensors."""
+_telemetry_cache: dict[str, Any] | None = None
+_last_telemetry_time: float = 0.0
+_has_vcgencmd: bool | None = None
+
+
+def get_pi_system_telemetry(force_fresh: bool = False) -> dict[str, Any]:
+    """Query Raspberry Pi OS thermal, voltage, clock, throttle, and memory sensors (cached for 0.5s)."""
+    global _telemetry_cache, _last_telemetry_time, _has_vcgencmd
+    now = time.time()
+    if not force_fresh and _telemetry_cache is not None and (now - _last_telemetry_time < 0.5):
+        return dict(_telemetry_cache)
+
+    if _has_vcgencmd is None:
+        import shutil
+        _has_vcgencmd = shutil.which("vcgencmd") is not None
+
     telemetry: dict[str, Any] = {
-        "timestamp_unix": time.time(),
-        "cpu_temp_c": 0.0,
-        "core_voltage_v": 0.0,
-        "arm_clock_mhz": 0.0,
+        "timestamp_unix": now,
+        "cpu_temp_c": 42.0,
+        "core_voltage_v": 1.20,
+        "arm_clock_mhz": 2400.0,
         "cpu_usage_pct": 0.0,
         "ram_usage_pct": 0.0,
         "ram_used_mb": 0.0,
@@ -42,62 +56,60 @@ def get_pi_system_telemetry() -> dict[str, Any]:
     temp_raw = _read_file_safe("/sys/class/thermal/thermal_zone0/temp")
     if temp_raw and temp_raw.isdigit():
         telemetry["cpu_temp_c"] = round(int(temp_raw) / 1000.0, 1)
-    else:
-        # Fallback to vcgencmd
+    elif _has_vcgencmd:
         try:
-            res = subprocess.run(["vcgencmd", "measure_temp"], capture_output=True, text=True, timeout=0.5)
+            res = subprocess.run(["vcgencmd", "measure_temp"], capture_output=True, text=True, timeout=0.3)
             if res.returncode == 0 and "temp=" in res.stdout:
                 val = res.stdout.strip().replace("temp=", "").replace("'C", "")
                 telemetry["cpu_temp_c"] = float(val)
         except Exception:
-            telemetry["cpu_temp_c"] = 42.0  # Safe default on non-Pi / host
+            pass
 
     # 2. Core Voltage
-    try:
-        res = subprocess.run(["vcgencmd", "measure_volts", "core"], capture_output=True, text=True, timeout=0.5)
-        if res.returncode == 0 and "volt=" in res.stdout:
-            val = res.stdout.strip().replace("volt=", "").replace("V", "")
-            telemetry["core_voltage_v"] = float(val)
-        else:
-            telemetry["core_voltage_v"] = 1.20
-    except Exception:
-        telemetry["core_voltage_v"] = 1.20
+    if _has_vcgencmd:
+        try:
+            res = subprocess.run(["vcgencmd", "measure_volts", "core"], capture_output=True, text=True, timeout=0.3)
+            if res.returncode == 0 and "volt=" in res.stdout:
+                val = res.stdout.strip().replace("volt=", "").replace("V", "")
+                telemetry["core_voltage_v"] = float(val)
+        except Exception:
+            pass
 
     # 3. ARM Clock Speed
-    try:
-        res = subprocess.run(["vcgencmd", "measure_clock", "arm"], capture_output=True, text=True, timeout=0.5)
-        if res.returncode == 0 and "frequency(" in res.stdout:
-            val = res.stdout.split("=")[-1].strip()
-            telemetry["arm_clock_mhz"] = round(int(val) / 1_000_000.0, 1)
-        else:
-            freq_raw = _read_file_safe("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")
-            if freq_raw and freq_raw.isdigit():
-                telemetry["arm_clock_mhz"] = round(int(freq_raw) / 1000.0, 1)
-            else:
-                telemetry["arm_clock_mhz"] = 2400.0  # Pi 5 nominal
-    except Exception:
-        telemetry["arm_clock_mhz"] = 2400.0
+    if _has_vcgencmd:
+        try:
+            res = subprocess.run(["vcgencmd", "measure_clock", "arm"], capture_output=True, text=True, timeout=0.3)
+            if res.returncode == 0 and "frequency(" in res.stdout:
+                val = res.stdout.split("=")[-1].strip()
+                telemetry["arm_clock_mhz"] = round(int(val) / 1_000_000.0, 1)
+        except Exception:
+            pass
+    else:
+        freq_raw = _read_file_safe("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")
+        if freq_raw and freq_raw.isdigit():
+            telemetry["arm_clock_mhz"] = round(int(freq_raw) / 1000.0, 1)
 
     # 4. Throttling and Under-Voltage Detection
-    try:
-        res = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=0.5)
-        if res.returncode == 0 and "throttled=" in res.stdout:
-            code_str = res.stdout.strip().split("=")[-1]
-            telemetry["throttled_code"] = code_str
-            code = int(code_str, 16)
+    if _has_vcgencmd:
+        try:
+            res = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=0.3)
+            if res.returncode == 0 and "throttled=" in res.stdout:
+                code_str = res.stdout.strip().split("=")[-1]
+                telemetry["throttled_code"] = code_str
+                code = int(code_str, 16)
 
-            warnings = []
-            if code & (1 << 0): warnings.append("CURRENT_UNDERVOLTAGE")
-            if code & (1 << 1): warnings.append("CURRENT_ARM_FREQ_CAPPED")
-            if code & (1 << 2): warnings.append("CURRENT_THROTTLED")
-            if code & (1 << 3): warnings.append("CURRENT_SOFT_TEMP_LIMIT")
-            if code & (1 << 16): warnings.append("PAST_UNDERVOLTAGE_OCCURRED")
-            if code & (1 << 17): warnings.append("PAST_ARM_FREQ_CAPPED_OCCURRED")
-            if code & (1 << 18): warnings.append("PAST_THROTTLED_OCCURRED")
-            if code & (1 << 19): warnings.append("PAST_SOFT_TEMP_LIMIT_OCCURRED")
-            telemetry["throttle_warnings"] = warnings
-    except Exception:
-        pass
+                warnings = []
+                if code & (1 << 0): warnings.append("CURRENT_UNDERVOLTAGE")
+                if code & (1 << 1): warnings.append("CURRENT_ARM_FREQ_CAPPED")
+                if code & (1 << 2): warnings.append("CURRENT_THROTTLED")
+                if code & (1 << 3): warnings.append("CURRENT_SOFT_TEMP_LIMIT")
+                if code & (1 << 16): warnings.append("PAST_UNDERVOLTAGE_OCCURRED")
+                if code & (1 << 17): warnings.append("PAST_ARM_FREQ_CAPPED_OCCURRED")
+                if code & (1 << 18): warnings.append("PAST_THROTTLED_OCCURRED")
+                if code & (1 << 19): warnings.append("PAST_SOFT_TEMP_LIMIT_OCCURRED")
+                telemetry["throttle_warnings"] = warnings
+        except Exception:
+            pass
 
     # 5. RAM & Memory Usage
     try:
@@ -135,7 +147,8 @@ def get_pi_system_telemetry() -> dict[str, Any]:
             telemetry["uptime_s"] = round(float(uptime_raw.split()[0]), 1)
         except Exception:
             pass
-
+    _telemetry_cache = dict(telemetry)
+    _last_telemetry_time = now
     return telemetry
 
 
