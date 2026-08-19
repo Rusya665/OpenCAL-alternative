@@ -93,10 +93,10 @@ class MotorCalibrator:
         self.color_filter: str = "dark_line"  # "dark_line", "red", "green", "cyan", "bright_dot"
         
         # Draggable & Resizable Optical Gate ROI (normalized 0.0 to 1.0)
-        self.gate_x: float = 0.26
-        self.gate_y: float = 0.18
-        self.gate_w: float = 0.28
-        self.gate_h: float = 0.62
+        self.gate_x: float = 0.38
+        self.gate_y: float = 0.22
+        self.gate_w: float = 0.24
+        self.gate_h: float = 0.56
 
         # Marker Shape & Wobble Tracking
         self.marker_shape_mode: str = "line"  # "line", "dot", "auto"

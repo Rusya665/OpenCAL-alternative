@@ -314,10 +314,10 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                             <img id="cal-cam-stream" class="cam-feed" src="" alt="Calibrator Vision HUD Stream" style="height: 100%; width: 100%; object-fit: contain; pointer-events: none;">
                             
                             <!-- Interactive Draggable & Resizable Optical Gate Overlay -->
-                            <div id="optical-gate-overlay" style="position: absolute; left: 26%; top: 18%; width: 28%; height: 62%; border: 2px dashed #00ffff; background: rgba(0, 255, 255, 0.08); box-shadow: 0 0 14px rgba(0,255,255,0.4); cursor: move; z-index: 15; touch-action: none; border-radius: 4px;">
+                            <div id="optical-gate-overlay" style="position: absolute; left: 38%; top: 22%; width: 24%; height: 56%; border: 2px dashed #00ffff; background: rgba(0, 255, 255, 0.08); box-shadow: 0 0 14px rgba(0,255,255,0.4); cursor: move; z-index: 15; touch-action: none; border-radius: 4px;">
                                 <div id="gate-header" style="background: rgba(0, 200, 255, 0.85); color: #000; font-size: 10px; font-weight: 800; padding: 2px 6px; display: flex; justify-content: space-between; align-items: center; cursor: move; user-select: none;">
                                     <span>✥ DRAG GATE</span>
-                                    <span id="gate-coords-label" style="font-family: var(--font-mono); font-size: 9px;">28x62%</span>
+                                    <span id="gate-coords-label" style="font-family: var(--font-mono); font-size: 9px;">24x56%</span>
                                 </div>
                                 <div style="position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: rgba(255, 165, 0, 0.8); pointer-events: none;"></div>
                                 <div id="gate-resize-handle" style="position: absolute; bottom: 0; right: 0; width: 20px; height: 20px; background: rgba(0, 255, 255, 0.85); cursor: se-resize; border-radius: 4px 0 2px 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #000; font-weight: bold; user-select: none;">⤡</div>
@@ -327,9 +327,9 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                         <!-- Quick Gate Position Helpers -->
                         <div style="display: flex; gap: 6px; margin-top: 6px; align-items: center; flex-wrap: wrap;">
                             <span style="font-size: 11px; color: var(--text-muted);">✥ Gate Presets:</span>
-                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(6,182,212,0.15); color: var(--accent-cyan); border-radius: 4px;" onclick="setGatePreset(0.26, 0.18, 0.28, 0.62)">Center Vial</button>
-                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(255,255,255,0.06); border-radius: 4px;" onclick="setGatePreset(0.20, 0.15, 0.40, 0.70)">Wide Gate</button>
-                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(255,255,255,0.06); border-radius: 4px;" onclick="setGatePreset(0.30, 0.25, 0.20, 0.50)">Tight Gate</button>
+                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(6,182,212,0.15); color: var(--accent-cyan); border-radius: 4px;" onclick="setGatePreset(0.38, 0.22, 0.24, 0.56)">🎯 30mm Standard Vial</button>
+                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(255,255,255,0.06); border-radius: 4px;" onclick="setGatePreset(0.30, 0.18, 0.40, 0.64)">↔ Wide Gate</button>
+                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(255,255,255,0.06); border-radius: 4px;" onclick="setGatePreset(0.36, 0.15, 0.28, 0.70)">↕ Tall Gate</button>
                         </div>
 
                         <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
@@ -973,7 +973,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         }
 
         // Draggable & Resizable Optical Gate Controller
-        let gateState = { x: 0.26, y: 0.18, w: 0.28, h: 0.62 };
+        let gateState = { x: 0.38, y: 0.22, w: 0.24, h: 0.56 };
         let isDraggingGate = false;
         let isResizingGate = false;
         let dragStart = { mouseX: 0, mouseY: 0, gateX: 0, gateY: 0, gateW: 0, gateH: 0 };
