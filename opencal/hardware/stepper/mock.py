@@ -41,6 +41,12 @@ class MockStepperMotor(StepperMotorInterface):
         self._steps += delta
         print(f"[MockStepper] rotate_steps {steps} {direction} (total={self._steps})")
 
+    def rotate_revolutions(self, revs: float = 1.0, direction: str | None = None, rpm: float | None = None) -> None:
+        if rpm:
+            self.set_rpm(rpm)
+        total_steps = int(round(revs * 3200 * getattr(self, "correction_factor", 1.0)))
+        self.rotate_steps(total_steps, direction)
+
     @override
     def is_running(self) -> bool:
         return self._running

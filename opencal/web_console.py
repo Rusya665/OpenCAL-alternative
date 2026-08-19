@@ -350,7 +350,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                         </div>
 
                         <!-- Calibration Settings -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                             <div>
                                 <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Target RPM:</label>
                                 <input type="number" id="cal-target-rpm" value="9.0" step="0.1" min="1" max="30" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
@@ -358,9 +358,10 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                             <div>
                                 <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Rotations:</label>
                                 <select id="cal-target-revs" style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 13px;">
-                                    <option value="20">20 Revs (Fast)</option>
-                                    <option value="30" selected>30 Revs (Std)</option>
-                                    <option value="50">50 Revs (Ultra)</option>
+                                    <option value="5">5 Revs (Ultra-Fast ~15s)</option>
+                                    <option value="10">10 Revs (Fast ~30s)</option>
+                                    <option value="20" selected>20 Revs (Standard)</option>
+                                    <option value="30">30 Revs (High-Precision)</option>
                                 </select>
                             </div>
                             <div>
@@ -383,12 +384,54 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                             </div>
                         </div>
 
-                        <!-- Telemetry Logs Quick Download -->
-                        <div style="border-top: 1px solid var(--border-card); padding-top: 10px; display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 12px; color: var(--text-muted);">📊 Telemetry CSV Logs:</span>
-                            <div style="display: flex; gap: 8px;">
-                                <button style="padding: 4px 10px; font-size: 11px;" onclick="loadTelemetryLogs()">🔄 Refresh</button>
-                                <button class="primary" style="padding: 4px 12px; font-size: 11px;" onclick="downloadLatestTelemetryLog()">📥 Download CSV</button>
+                        <!-- High Speed Quick Presets -->
+                        <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 12px; flex-wrap: wrap;">
+                            <span style="font-size: 11px; color: var(--text-muted);">⚡ Speed Presets:</span>
+                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(255,255,255,0.06); border-radius: 4px;" onclick="setCalPreset(9.0, 10)">9 RPM</button>
+                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(6,182,212,0.15); color: var(--accent-cyan); border-radius: 4px;" onclick="setCalPreset(15.0, 10)">15 RPM (Fast ~40s)</button>
+                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(16,185,129,0.15); color: var(--accent-green); border-radius: 4px;" onclick="setCalPreset(20.0, 10)">20 RPM (Turbo ~30s)</button>
+                            <button type="button" style="padding: 3px 8px; font-size: 11px; background: rgba(245,158,11,0.15); color: var(--accent-amber); border-radius: 4px;" onclick="setCalPreset(30.0, 10)">30 RPM (Ultra ~20s)</button>
+                        </div>
+
+                        <!-- Auto-Find Marker & Stepped Rotation Drift Test Grid -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; margin-bottom: 12px;">
+                            <!-- Auto-Find Marker Card -->
+                            <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 8px; padding: 10px;">
+                                <div style="font-size: 11px; font-weight: 700; color: var(--accent-cyan); margin-bottom: 6px;">🔍 AUTO-FIND &amp; CENTER MARKER</div>
+                                <div style="display: flex; gap: 6px; margin-bottom: 6px;">
+                                    <button class="primary" style="flex: 1; padding: 6px 10px; font-size: 11px;" onclick="startFindMarker()">🔍 Find Line/Dot (Max 2 Revs)</button>
+                                    <button class="danger" style="padding: 6px 10px; font-size: 11px;" onclick="stopFindMarker()">⏹</button>
+                                </div>
+                                <div id="finder-status-msg" style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">Status: Ready</div>
+                            </div>
+
+                            <!-- Stepped Rotation Drift Test Card -->
+                            <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 10px;">
+                                <div style="font-size: 11px; font-weight: 700; color: var(--accent-amber); margin-bottom: 6px;">🔁 STEPPED TURNS (DRIFT TEST)</div>
+                                <div style="display: flex; gap: 6px; margin-bottom: 6px; align-items: center;">
+                                    <button class="primary" style="flex: 1; padding: 6px 8px; font-size: 11px; background: rgba(245, 158, 11, 0.25); border-color: var(--accent-amber); color: var(--accent-amber);" onclick="startSteppedRotations(1)">🔁 1 Turn (360°)</button>
+                                    <button class="primary" style="flex: 1.2; padding: 6px 8px; font-size: 11px; background: rgba(6, 182, 212, 0.25); border-color: var(--accent-cyan); color: var(--accent-cyan);" onclick="startSteppedRotations(parseInt(document.getElementById('cal-step-count').value))">▶ Do X Turns</button>
+                                    <input type="number" id="cal-step-count" value="3" min="1" max="50" style="width: 44px; padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.5); border: 1px solid var(--border-card); color: white; font-size: 12px; text-align: center;">
+                                    <button class="danger" style="padding: 6px 8px; font-size: 11px;" onclick="stopSteppedRotations()">⏹</button>
+                                </div>
+                                <div id="step-status-msg" style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">Status: Ready</div>
+                            </div>
+                        </div>
+
+                        <!-- Telemetry Logs Quick Download & Selector -->
+                        <div style="border-top: 1px solid var(--border-card); padding-top: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <span style="font-size: 12px; color: var(--text-muted);">📊 Telemetry CSV Logs:</span>
+                                <div style="display: flex; gap: 6px;">
+                                    <button style="padding: 4px 10px; font-size: 11px;" onclick="loadTelemetryLogs()">🔄 Refresh List</button>
+                                    <button class="primary" style="padding: 4px 12px; font-size: 11px;" onclick="downloadLatestTelemetryLog()">📥 Download Latest CSV</button>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <select id="cal-log-selector" style="flex: 1; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-card); color: white; font-size: 11px; font-family: var(--font-mono);">
+                                    <option value="">-- Select Recorded CSV Log --</option>
+                                </select>
+                                <button style="padding: 6px 12px; font-size: 11px;" onclick="downloadSelectedLog()">📥 Download Selected</button>
                             </div>
                         </div>
                     </div>
@@ -958,16 +1001,54 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             }
         }
 
+        function setCalPreset(rpm, revs) {
+            document.getElementById('cal-target-rpm').value = rpm;
+            document.getElementById('cal-target-revs').value = revs;
+            showToast('Calibration preset set: ' + rpm + ' RPM (' + revs + ' revs)');
+        }
+
+        async function startFindMarker() {
+            const res = await postAPI('/api/stepper/find_marker', {rpm: 4.5, max_revs: 2.0});
+            showToast('Searching for marker (rotating max 2 revs)...');
+        }
+
+        async function stopFindMarker() {
+            const res = await postAPI('/api/stepper/stop_finder');
+            showToast('Marker search stopped.');
+        }
+
+        async function startSteppedRotations(count) {
+            const rpm = parseFloat(document.getElementById('cal-target-rpm').value) || 9.0;
+            const res = await postAPI('/api/stepper/step_rotations', {rotations: count, rpm: rpm, pause_s: 1.5});
+            showToast('Started ' + count + ' stepped turn(s) with 1.5s pause');
+        }
+
+        async function stopSteppedRotations() {
+            const res = await postAPI('/api/stepper/stop_stepping');
+            showToast('Stepped rotations stopped.');
+        }
+
         let latestTelemetryLogName = '';
 
         async function loadTelemetryLogs() {
             try {
                 const res = await fetch('/api/telemetry/logs');
                 const data = await res.json();
+                const sel = document.getElementById('cal-log-selector');
                 if (data.logs && data.logs.length > 0) {
                     latestTelemetryLogName = data.logs[0].name;
-                    showToast('Found ' + data.logs.length + ' telemetry log files. Latest: ' + latestTelemetryLogName);
+                    if (sel) {
+                        sel.innerHTML = '';
+                        data.logs.forEach(l => {
+                            const opt = document.createElement('option');
+                            opt.value = l.name;
+                            opt.innerText = l.name + ' (' + l.size + ', ' + l.time + ')';
+                            sel.appendChild(opt);
+                        });
+                    }
+                    showToast('Found ' + data.logs.length + ' log(s). Latest: ' + latestTelemetryLogName);
                 } else {
+                    if (sel) sel.innerHTML = '<option value="">-- No logs found on server --</option>';
                     showToast('No telemetry logs recorded yet.');
                 }
             } catch (e) {
@@ -975,11 +1056,28 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             }
         }
 
-        function downloadLatestTelemetryLog() {
-            if (latestTelemetryLogName) {
-                window.open('/api/telemetry/logs/download?file=' + encodeURIComponent(latestTelemetryLogName), '_blank');
+        async function downloadLatestTelemetryLog() {
+            try {
+                const res = await fetch('/api/telemetry/logs');
+                const data = await res.json();
+                if (data.logs && data.logs.length > 0) {
+                    const latest = data.logs[0].name;
+                    window.open('/api/telemetry/logs/download?file=' + encodeURIComponent(latest), '_blank');
+                    showToast('Downloading: ' + latest);
+                } else {
+                    showToast('No telemetry logs found. Complete a calibration run first!');
+                }
+            } catch (e) {
+                showToast('Error: ' + e);
+            }
+        }
+
+        function downloadSelectedLog() {
+            const sel = document.getElementById('cal-log-selector');
+            if (sel && sel.value) {
+                window.open('/api/telemetry/logs/download?file=' + encodeURIComponent(sel.value), '_blank');
             } else {
-                showToast('No telemetry logs recorded yet. Start a calibration run first!');
+                showToast('Please select a log file from the dropdown first.');
             }
         }
 
@@ -1109,6 +1207,12 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                             document.getElementById('t-vis-wobble').innerText = (deep.calibration.wobble_runout_px || 0).toFixed(1) + ' px';
                             document.getElementById('t-vis-conf').innerText = (deep.calibration.confidence || 0) + ' px²';
                         }
+                        if (deep.stepped_test && document.getElementById('step-status-msg')) {
+                            document.getElementById('step-status-msg').innerText = deep.stepped_test.status_message || 'Ready';
+                        }
+                        if (deep.marker_finder && document.getElementById('finder-status-msg')) {
+                            document.getElementById('finder-status-msg').innerText = deep.marker_finder.status_message || 'Ready';
+                        }
                     }
                 } catch(de) {}
             } catch (e) {}
@@ -1200,6 +1304,8 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
     hardware: HardwareController | None = None
     print_controller: Any | None = None
     motor_calibrator: MotorCalibrator | None = None
+    stepped_runner: Any | None = None
+    marker_finder: Any | None = None
     _latest_cam_jpg: bytes | None = None
     _latest_cal_jpg: bytes | None = None
     _cal_lock: threading.Lock = threading.Lock()
@@ -1558,10 +1664,14 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
             pi = get_pi_system_telemetry()
             stepper = self.hardware.stepper.get_telemetry() if (self.hardware and self.hardware.stepper) else {}
             cal = self.motor_calibrator.latest_sample if self.motor_calibrator else {}
+            step_status = self.stepped_runner.get_status() if self.stepped_runner else {}
+            finder_status = self.marker_finder.get_status() if self.marker_finder else {}
             self._send_json({
                 "pi": pi,
                 "stepper": stepper,
                 "calibration": cal,
+                "stepped_test": step_status,
+                "marker_finder": finder_status,
                 "timestamp": time.time(),
             })
             return
@@ -1696,6 +1806,45 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 self._send_json(res)
             else:
                 self._send_json({"error": "Motor calibrator unavailable"}, status=500)
+            return
+
+        if parsed.path == "/api/stepper/step_rotations":
+            if self.stepped_runner:
+                revs = int(data.get("rotations", 1))
+                pause_s = float(data.get("pause_s", 1.5))
+                rpm = float(data.get("rpm", 9.0))
+                direction = str(data.get("direction", "CW"))
+                res = self.stepped_runner.start(revs, rpm, pause_s, direction)
+                self._send_json(res)
+            else:
+                self._send_json({"error": "Stepped runner unavailable"}, status=500)
+            return
+
+        if parsed.path == "/api/stepper/stop_stepping":
+            if self.stepped_runner:
+                res = self.stepped_runner.stop()
+                self._send_json(res)
+            else:
+                self._send_json({"error": "Stepped runner unavailable"}, status=500)
+            return
+
+        if parsed.path == "/api/stepper/find_marker":
+            if self.marker_finder:
+                rpm = float(data.get("rpm", 4.5))
+                max_revs = float(data.get("max_revs", 2.0))
+                direction = str(data.get("direction", "CW"))
+                res = self.marker_finder.start(rpm, max_revs, direction)
+                self._send_json(res)
+            else:
+                self._send_json({"error": "Marker finder unavailable"}, status=500)
+            return
+
+        if parsed.path == "/api/stepper/stop_finder":
+            if self.marker_finder:
+                res = self.marker_finder.stop()
+                self._send_json(res)
+            else:
+                self._send_json({"error": "Marker finder unavailable"}, status=500)
             return
 
         # 1. PRINT JOB CONTROLS
@@ -2046,7 +2195,10 @@ def start_web_console_thread(print_controller_or_hardware: Any, host="0.0.0.0", 
     else:
         WebConsoleHandler.hardware = print_controller_or_hardware
 
+    from opencal.utils.calibration.motor_calibrator import MotorCalibrator, SteppedRotationRunner, MarkerFinder
     WebConsoleHandler.motor_calibrator = MotorCalibrator(WebConsoleHandler.hardware)
+    WebConsoleHandler.stepped_runner = SteppedRotationRunner(WebConsoleHandler.hardware)
+    WebConsoleHandler.marker_finder = MarkerFinder(WebConsoleHandler.hardware, WebConsoleHandler.motor_calibrator)
 
     def _vision_worker_loop():
         sim_angle = 0.0

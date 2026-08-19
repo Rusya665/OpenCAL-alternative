@@ -117,10 +117,20 @@ class TicUSBStepperMotor(StepperMotorInterface):
         target = self.tic.get_current_position() + signed_steps
         self.tic.set_target_position(target)
 
+        steps_per_sec = max(100.0, (self._speed_rpm * self.steps_per_rev / 60) * self.correction_factor)
+        timeout = max(12.0, (abs(steps) / steps_per_sec) + 8.0)
+
         t_start = time.time()
-        while self.tic.get_current_position() != target and (time.time() - t_start < 10):
+        while self.tic.get_current_position() != target and (time.time() - t_start < timeout):
             self.tic.reset_command_timeout()
             time.sleep(0.02)
+
+    def rotate_revolutions(self, revs: float = 1.0, direction: str | None = None, rpm: float | None = None) -> None:
+        """Rotates exact number of 360° revolutions scaled by current correction factor."""
+        if rpm:
+            self.set_rpm(rpm)
+        total_steps = int(round(revs * self.steps_per_rev * self.correction_factor))
+        self.rotate_steps(total_steps, direction)
 
     @override
     def angle_in_steps(self) -> int:

@@ -511,3 +511,193 @@ class MotorCalibrator:
             }
         except Exception as e:
             return {"success": False, "message": f"Failed to update config.json: {e}"}
+
+
+class SteppedRotationRunner:
+    """Controls stepped rotation test: 1 revolution -> pause -> repeat X times."""
+    def __init__(self, hw: Any):
+        self.hw = hw
+        self.is_active: bool = False
+        self._stop_requested: bool = False
+        self._thread: threading.Thread | None = None
+        self.current_rev: int = 0
+        self.total_revs: int = 0
+        self.state: str = "IDLE"  # "IDLE" | "ROTATING" | "PAUSED" | "COMPLETED" | "STOPPED"
+        self.status_message: str = "Idle (Ready for Stepped Test)"
+
+    def start(self, total_revs: int = 1, rpm: float = 9.0, pause_s: float = 1.5, direction: str = "CW") -> dict[str, Any]:
+        self.stop()
+        self.is_active = True
+        self._stop_requested = False
+        self.total_revs = max(1, int(total_revs))
+        self.current_rev = 0
+        self.state = "STARTING"
+        self.status_message = f"Starting stepped test: {self.total_revs} turns at {rpm} RPM (pause {pause_s}s)..."
+
+        def _worker():
+            stepper = getattr(self.hw, "stepper", None) if self.hw else None
+            try:
+                for rev_idx in range(1, self.total_revs + 1):
+                    if self._stop_requested:
+                        break
+                    self.current_rev = rev_idx
+                    self.state = "ROTATING"
+                    self.status_message = f"Rotating Turn {rev_idx}/{self.total_revs} (360°)..."
+
+                    if stepper:
+                        if hasattr(stepper, "rotate_revolutions"):
+                            stepper.rotate_revolutions(1.0, direction=direction, rpm=rpm)
+                        elif hasattr(stepper, "rotate_steps"):
+                            steps_per_rev = getattr(stepper, "steps_per_rev", 3200)
+                            cf = getattr(stepper, "correction_factor", 1.0)
+                            total_steps = int(round(steps_per_rev * cf))
+                            stepper.set_rpm(rpm)
+                            stepper.rotate_steps(total_steps, direction=direction)
+
+                    if self._stop_requested:
+                        break
+
+                    # Pause between rotations for visual marker drift inspection
+                    if rev_idx < self.total_revs:
+                        self.state = "PAUSED"
+                        self.status_message = f"Turn {rev_idx}/{self.total_revs} done! Pausing {pause_s}s (Observe line position)..."
+                        t_pause_start = time.time()
+                        while time.time() - t_pause_start < pause_s and not self._stop_requested:
+                            time.sleep(0.05)
+
+                if not self._stop_requested:
+                    self.state = "COMPLETED"
+                    self.status_message = f"Completed all {self.total_revs} stepped turns!"
+                else:
+                    self.state = "STOPPED"
+                if not self._stop_requested:
+                    self.state = "COMPLETED"
+                    self.status_message = f"Completed all {self.total_revs} stepped turns!"
+                else:
+                    self.state = "STOPPED"
+                    self.status_message = "Stepped rotation stopped."
+            except Exception as e:
+                self.state = "ERROR"
+                self.status_message = f"Error during stepped rotation: {e}"
+            finally:
+                self.is_active = False
+
+        self._thread = threading.Thread(target=_worker, daemon=True)
+        self._thread.start()
+        return {"success": True, "message": f"Stepped test started ({self.total_revs} revs)"}
+
+    def stop(self) -> dict[str, Any]:
+        self._stop_requested = True
+        stepper = getattr(self.hw, "stepper", None) if self.hw else None
+        if stepper:
+            try:
+                stepper.stop()
+            except Exception:
+                pass
+        self.is_active = False
+        self.state = "STOPPED"
+        self.status_message = "Stopped"
+        return {"success": True, "message": "Stepped rotation stopped."}
+
+    def get_status(self) -> dict[str, Any]:
+        return {
+            "is_active": self.is_active,
+            "current_rev": self.current_rev,
+            "total_revs": self.total_revs,
+            "state": self.state,
+            "status_message": self.status_message,
+        }
+
+
+class MarkerFinder:
+    """Rotates the vial slowly (at ~4.5 RPM) to locate and center the drawn marker line or dot (max 2 revolutions timeout)."""
+    def __init__(self, hw: Any, calibrator: Any):
+        self.hw = hw
+        self.calibrator = calibrator
+        self.is_active: bool = False
+        self._stop_requested: bool = False
+        self._thread: threading.Thread | None = None
+        self.state: str = "IDLE"  # "IDLE" | "SEARCHING" | "FOUND_CENTERED" | "NOT_FOUND" | "STOPPED"
+        self.status_message: str = "Idle (Ready to Find Marker)"
+
+    def start(self, rpm: float = 4.5, max_revs: float = 2.0, direction: str = "CW") -> dict[str, Any]:
+        self.stop()
+        self.is_active = True
+        self._stop_requested = False
+        self.state = "SEARCHING"
+        self.status_message = f"Searching for marker line/dot at {rpm} RPM (max {max_revs:.0f} turns)..."
+
+        def _worker():
+            stepper = getattr(self.hw, "stepper", None) if self.hw else None
+            try:
+                if stepper:
+                    stepper.set_rpm(rpm)
+                    if not stepper.is_running():
+                        stepper.start_rotation(direction)
+
+                # Maximum duration for max_revs revolutions plus safety margin
+                max_duration = (max_revs * 60.0 / rpm) + 2.0
+                t_start = time.time()
+                marker_found = False
+
+                while time.time() - t_start < max_duration and not self._stop_requested:
+                    sample = getattr(self.calibrator, "latest_sample", {})
+                    detected = sample.get("marker_detected", False)
+                    norm_y = sample.get("marker_norm_y", 1.0)
+                    
+                    # When marker is detected and close to centerline (|y| <= 0.12)
+                    if detected and abs(norm_y) <= 0.12:
+                        # Stop stepper immediately to hold at center!
+                        if stepper:
+                            stepper.stop()
+                        marker_found = True
+                        self.state = "FOUND_CENTERED"
+                        shape = sample.get("detected_shape", "marker")
+                        self.status_message = f"🎯 Marker {shape.upper()} located & centered at y={norm_y:+.3f}!"
+                        break
+
+                    time.sleep(0.033)
+
+                if not marker_found:
+                    if stepper:
+                        stepper.stop()
+                    if self._stop_requested:
+                        self.state = "STOPPED"
+                        self.status_message = "Marker search cancelled."
+                    else:
+                        self.state = "NOT_FOUND"
+                        self.status_message = f"⚠️ Marker not detected after {max_revs:.0f} full revolutions. Check tape and marker line!"
+            except Exception as e:
+                self.state = "ERROR"
+                self.status_message = f"Search error: {e}"
+                if stepper:
+                    try:
+                        stepper.stop()
+                    except Exception:
+                        pass
+            finally:
+                self.is_active = False
+
+        self._thread = threading.Thread(target=_worker, daemon=True)
+        self._thread.start()
+        return {"success": True, "message": "Marker search started"}
+
+    def stop(self) -> dict[str, Any]:
+        self._stop_requested = True
+        stepper = getattr(self.hw, "stepper", None) if self.hw else None
+        if stepper:
+            try:
+                stepper.stop()
+            except Exception:
+                pass
+        self.is_active = False
+        self.state = "STOPPED"
+        self.status_message = "Search stopped"
+        return {"success": True, "message": "Marker search stopped."}
+
+    def get_status(self) -> dict[str, Any]:
+        return {
+            "is_active": self.is_active,
+            "state": self.state,
+            "status_message": self.status_message,
+        }
