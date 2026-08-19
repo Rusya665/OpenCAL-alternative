@@ -62,6 +62,8 @@ class TicUSBStepperMotor(StepperMotorInterface):
         self._speed_rpm: float = self.default_rpm
         self._heartbeat_thread: threading.Thread | None = None
         self._finish_event = threading.Event()
+        self._last_telemetry_time: float = 0.0
+        self._cached_telemetry: dict = {}
 
         self.tic.deenergize()
 
@@ -179,7 +181,11 @@ class TicUSBStepperMotor(StepperMotorInterface):
 
     @override
     def get_telemetry(self) -> dict:
-        """Query Pololu Tic status and telemetry variables."""
+        """Query Pololu Tic status and telemetry variables with 0.5s caching."""
+        now = time.time()
+        if now - self._last_telemetry_time < 0.5 and self._cached_telemetry:
+            return self._cached_telemetry
+
         pos = 0
         target_vel = 0
         curr_vel = 0
@@ -206,7 +212,7 @@ class TicUSBStepperMotor(StepperMotorInterface):
         # Fallback to ticcmd -s if direct library calls fail or lack fields
         if vin_mv == 0:
             try:
-                res = subprocess.run(["ticcmd", "-s", "--full"], capture_output=True, text=True, timeout=1.0)
+                res = subprocess.run(["ticcmd", "-s", "--full"], capture_output=True, text=True, timeout=0.3)
                 if res.returncode == 0:
                     for line in res.stdout.splitlines():
                         if "VIN voltage:" in line:
@@ -229,7 +235,7 @@ class TicUSBStepperMotor(StepperMotorInterface):
 
         vin_v = round(vin_mv / 1000.0, 2) if vin_mv > 0 else (12.1 if self.is_running() else 12.2)
 
-        return {
+        result = {
             "driver": "Pololu_Tic_USB",
             "is_running": self.is_running(),
             "target_rpm": self._speed_rpm,
@@ -244,3 +250,6 @@ class TicUSBStepperMotor(StepperMotorInterface):
             "errors": errors,
             "status": "Running" if self.is_running() else "De-energized",
         }
+        self._cached_telemetry = result
+        self._last_telemetry_time = now
+        return result
