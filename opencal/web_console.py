@@ -321,6 +321,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                         <div style="color: var(--text-muted);">Status: <b id="t-motor-status" style="color: #fff;">--</b></div>
                         <div style="color: var(--text-muted);">Step Freq: <b id="t-motor-freq" style="color: #fff;">--</b></div>
                         <div style="color: var(--text-muted);">Temp Flag: <b id="t-motor-temp" style="color: #fff;">--</b></div>
+                        <div style="grid-column: span 2; color: var(--text-muted); border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 4px; margin-top: 4px;">Speed Trim: <b id="t-motor-comp" style="color: var(--accent-amber);">RAW UNCOMPENSATED (1.000000)</b></div>
                     </div>
                 </div>
 
@@ -394,7 +395,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                             <button class="primary" style="flex: 1; min-width: 130px;" onclick="startMotorAutoCal()">▶ Start Auto-Cal</button>
                             <button class="danger" style="flex: 0.8; min-width: 90px;" onclick="stopMotorAutoCal()">⏹ Stop</button>
                             <button class="success" style="flex: 1.2; min-width: 150px; background: rgba(16, 185, 129, 0.25); border-color: var(--accent-green); color: var(--accent-green);" onclick="applyCalibrationCorrection()">💾 Apply Calculated</button>
-                            <button class="secondary" style="flex: 1.2; min-width: 150px; background: rgba(245, 158, 11, 0.2); border-color: var(--accent-amber); color: var(--accent-amber);" onclick="revertCalibrationCorrection()">⏪ Return Previous (1.0)</button>
+                            <button class="secondary" style="flex: 1.2; min-width: 150px; background: rgba(245, 158, 11, 0.2); border-color: var(--accent-amber); color: var(--accent-amber);" onclick="revertCalibrationCorrection()">🔄 Reset to Raw (1.000000)</button>
                         </div>
                     </div>
 
@@ -410,9 +411,10 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                             <div style="background: rgba(0,0,0,0.35); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); text-align: center;">
                                 <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Correction Factor</div>
                                 <div id="cal-sugg-factor" style="font-size: 24px; font-weight: 700; color: var(--accent-cyan); font-family: var(--font-mono); margin-top: 4px;">1.000000</div>
-                                <div id="cal-curr-factor" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Current: 1.000000</div>
+                                <div id="cal-curr-factor-badge" style="display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; background: rgba(245,158,11,0.2); color: var(--accent-amber); border: 1px solid rgba(245,158,11,0.4);">CURRENT: 1.000000 (RAW BASELINE)</div>
                             </div>
                         </div>
+
 
                         <!-- Progress Bar & Status -->
                         <div style="margin-bottom: 12px;">
@@ -627,8 +629,15 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <span style="font-size: 12px; color: var(--accent-amber);" id="motor-pos-badge">Position: 0</span>
             </div>
 
+            <!-- Stepper Speed Compensation Mode Banner -->
+            <div id="stepper-comp-banner" style="margin-bottom: 12px; padding: 7px 10px; border-radius: 6px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.3); color: var(--accent-amber);">
+                <span>Speed Mode: <b id="stepper-comp-text">RAW BASELINE (1.000000)</b></span>
+                <button type="button" onclick="revertCalibrationCorrection(1.0)" style="padding: 2px 8px; font-size: 10px; background: rgba(255,255,255,0.08); border-radius: 4px; border: 1px solid rgba(255,255,255,0.15);">Reset 1.0</button>
+            </div>
+
             <div class="slider-container">
                 <label style="min-width: 80px;">Speed:</label>
+
                 <input type="range" id="speed-slider" min="0.5" max="30" step="0.5" value="9.0" oninput="document.getElementById('speed-val').innerText = this.value + ' RPM'">
                 <span class="slider-val" id="speed-val">9.0 RPM</span>
             </div>
@@ -1175,23 +1184,20 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             const res = await postAPI('/api/calibrate/motor/apply');
             if (res && res.message) {
                 showToast(res.message);
-                if (res.correction_factor) {
-                    document.getElementById('cal-curr-factor').innerText = 'Current: ' + res.correction_factor.toFixed(6);
-                }
+                updateTelemetry();
             }
         }
 
         async function revertCalibrationCorrection() {
-            if (confirm('Revert motor back to uncompensated base speed (Factor = 1.000000)?')) {
+            if (confirm('Revert motor back to uncompensated raw base speed (Factor = 1.000000)?')) {
                 const res = await postAPI('/api/calibrate/motor/revert', {factor: 1.0});
                 if (res && res.message) {
                     showToast(res.message);
-                    if (res.correction_factor !== undefined) {
-                        document.getElementById('cal-curr-factor').innerText = 'Current: ' + res.correction_factor.toFixed(6);
-                    }
+                    updateTelemetry();
                 }
             }
         }
+
 
         function setCalPreset(rpm, revs) {
             document.getElementById('cal-target-rpm').value = rpm;
@@ -1355,8 +1361,56 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                     if (jitEl) jitEl.innerHTML = 'Jitter: &plusmn;' + (calData.rpm_jitter_std || 0).toFixed(4) + ' RPM';
                     const suggEl = document.getElementById('cal-sugg-factor');
                     if (suggEl) suggEl.innerText = (calData.suggested_correction_factor || 1.0).toFixed(6);
-                    const currEl = document.getElementById('cal-curr-factor');
-                    if (currEl) currEl.innerText = 'Current: ' + (calData.current_correction_factor || 1.0).toFixed(6);
+                    
+                    const curFactor = calData.current_correction_factor || 1.0;
+                    const isComp = Math.abs(curFactor - 1.0) > 0.00005;
+                    const compPct = (curFactor - 1.0) * 100.0;
+                    const compPctStr = (compPct >= 0 ? '+' : '') + compPct.toFixed(2) + '%';
+
+                    const badgeCurr = document.getElementById('cal-curr-factor-badge');
+                    if (badgeCurr) {
+                        if (isComp) {
+                            badgeCurr.innerText = 'CURRENT: ' + curFactor.toFixed(6) + ' (COMPENSATED: ' + compPctStr + ')';
+                            badgeCurr.style.background = 'rgba(16, 185, 129, 0.2)';
+                            badgeCurr.style.borderColor = 'rgba(16, 185, 129, 0.5)';
+                            badgeCurr.style.color = 'var(--accent-green)';
+                        } else {
+                            badgeCurr.innerText = 'CURRENT: 1.000000 (RAW BASELINE - NO COMP)';
+                            badgeCurr.style.background = 'rgba(245, 158, 11, 0.2)';
+                            badgeCurr.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+                            badgeCurr.style.color = 'var(--accent-amber)';
+                        }
+                    }
+
+                    // Stepper Card Banner
+                    const stepCompText = document.getElementById('stepper-comp-text');
+                    const stepCompBanner = document.getElementById('stepper-comp-banner');
+                    if (stepCompText && stepCompBanner) {
+                        if (isComp) {
+                            stepCompText.innerText = 'COMPENSATED ACTIVE (' + curFactor.toFixed(6) + ' [' + compPctStr + ' Trim])';
+                            stepCompBanner.style.background = 'rgba(16, 185, 129, 0.12)';
+                            stepCompBanner.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                            stepCompBanner.style.color = 'var(--accent-green)';
+                        } else {
+                            stepCompText.innerText = 'RAW BASELINE (1.000000 - No Compensation)';
+                            stepCompBanner.style.background = 'rgba(245, 158, 11, 0.12)';
+                            stepCompBanner.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+                            stepCompBanner.style.color = 'var(--accent-amber)';
+                        }
+                    }
+
+                    // Top Matrix Speed Trim
+                    const topMotorComp = document.getElementById('t-motor-comp');
+                    if (topMotorComp) {
+                        if (isComp) {
+                            topMotorComp.innerText = 'COMPENSATED (' + curFactor.toFixed(6) + ' [' + compPctStr + '])';
+                            topMotorComp.style.color = 'var(--accent-green)';
+                        } else {
+                            topMotorComp.innerText = 'RAW UNCOMPENSATED (1.000000)';
+                            topMotorComp.style.color = 'var(--accent-amber)';
+                        }
+                    }
+
                     const revEl = document.getElementById('cal-rev-count');
                     if (revEl) revEl.innerText = calData.revolutions + ' / ' + calData.target_revolutions;
                     const pct = calData.target_revolutions > 0 ? Math.min(100, Math.round((calData.revolutions / calData.target_revolutions) * 100)) : 0;
@@ -1381,6 +1435,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                         }
                     }
                 }
+
 
                 // 3. Deep Real-Time Sensor Telemetry Matrix
                 if (deep && !deep.error) {

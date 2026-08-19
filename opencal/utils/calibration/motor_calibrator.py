@@ -138,7 +138,14 @@ class MotorCalibrator:
         self.last_log_path: Path | None = None
         self.latest_sample: dict[str, Any] = {}
 
+    @property
+    def current_correction_factor(self) -> float:
+        if self.hw and hasattr(self.hw, "stepper") and self.hw.stepper:
+            return getattr(self.hw.stepper, "correction_factor", 1.0)
+        return 1.0
+
     def set_gate_roi(self, x: float, y: float, w: float, h: float) -> dict[str, float]:
+
         with self._lock:
             self.gate_x = max(0.0, min(0.95, float(x)))
             self.gate_y = max(0.0, min(0.95, float(y)))
@@ -458,15 +465,27 @@ class MotorCalibrator:
         cv2.addWeighted(overlay, 0.85, out, 0.15, 0, out)
 
         status_color = (0, 255, 128) if self.is_active else ((0, 255, 255) if self.calibration_complete else (220, 220, 220))
-        cv2.putText(out, f"OPENCAL AUTO-TUNER: {self.status_message}", (14, 28), cv2.FONT_HERSHEY_DUPLEX, 0.72, status_color, 2, cv2.LINE_AA)
+        cv2.putText(out, f"OPENCAL AUTO-TUNER: {self.status_message}", (14, 28), cv2.FONT_HERSHEY_DUPLEX, 0.70, status_color, 2, cv2.LINE_AA)
+
+        # Compensation State Tag on Top Right of HUD
+        cur_f = self.current_correction_factor
+        is_comp = abs(cur_f - 1.0) > 0.00005
+        comp_pct = (cur_f - 1.0) * 100.0
+        comp_badge_text = f"MOTOR: COMPENSATED ({cur_f:.6f} | {comp_pct:+.2f}%)" if is_comp else "MOTOR: RAW 1:1 BASELINE (NO COMP)"
+        comp_badge_color = (0, 255, 128) if is_comp else (0, 180, 255)
+        (cw, ch), _ = cv2.getTextSize(comp_badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.52, 2)
+        cv2.rectangle(out, (w - cw - 20, 10), (w - 10, 36), (20, 30, 45), -1)
+        cv2.rectangle(out, (w - cw - 20, 10), (w - 10, 36), comp_badge_color, 1)
+        cv2.putText(out, comp_badge_text, (w - cw - 15, 29), cv2.FONT_HERSHEY_SIMPLEX, 0.52, comp_badge_color, 2, cv2.LINE_AA)
 
         metrics_text = (
             f"TARGET: {self.target_rpm:.1f} RPM  |  "
             f"MEASURED: {self.measured_avg_rpm:.4f} RPM  |  "
             f"REV: {self.revolutions_completed}/{self.target_revolutions}  |  "
-            f"CORR: {self.suggested_correction_factor:.6f}"
+            f"SUGGESTED: {self.suggested_correction_factor:.6f}"
         )
-        cv2.putText(out, metrics_text, (14, 64), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(out, metrics_text, (14, 64), cv2.FONT_HERSHEY_SIMPLEX, 0.62, (255, 255, 255), 2, cv2.LINE_AA)
+
 
         # 4. Bottom Hardware Status Bar
         bot_overlay = out.copy()
