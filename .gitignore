@@ -37,3 +37,10 @@ prints/
 Thumbs.db
 ~*.sldasm
 
+# Machine-Specific Local Overrides & Logs
+*.local.json
+opencal/utils/config.local.json
+telemetry_logs/
+test_logs/
+
+

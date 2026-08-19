@@ -24,7 +24,8 @@ import cv2
 import numpy as np
 
 from opencal.utils.telemetry import get_pi_system_telemetry
-from opencal.utils.config import CFG_PATH
+from opencal.utils.config import CFG_PATH, LOCAL_CFG_PATH, save_local_override
+
 
 
 class TelemetrySessionLogger:
@@ -523,7 +524,7 @@ class MotorCalibrator:
         return out
 
     def apply_correction(self) -> dict[str, Any]:
-        """Applies suggested CORRECTION_FACTOR to live motor and persists to config.json."""
+        """Applies suggested CORRECTION_FACTOR to live motor and persists to machine-specific config.local.json."""
         if self.suggested_correction_factor <= 0:
             return {"success": False, "message": "Invalid correction factor"}
 
@@ -536,25 +537,16 @@ class MotorCalibrator:
             except Exception as e:
                 print(f"Error applying correction to stepper: {e}")
 
-        # 2. Persist into config.json
+        # 2. Persist safely into config.local.json (never overwritten by git pull)
         try:
-            with open(CFG_PATH, "r") as f:
-                cfg_data = json.load(f)
-            
-            if "stepper_motor" not in cfg_data:
-                cfg_data["stepper_motor"] = {}
-            cfg_data["stepper_motor"]["correction_factor"] = new_factor
-
-            with open(CFG_PATH, "w") as f:
-                json.dump(cfg_data, f, indent=2)
-
+            save_local_override("stepper_motor", "correction_factor", new_factor)
             return {
                 "success": True, 
-                "message": f"Successfully applied and saved CORRECTION_FACTOR = {new_factor:.6f} to config.json!",
+                "message": f"Successfully applied and saved CORRECTION_FACTOR = {new_factor:.6f} to config.local.json!",
                 "correction_factor": new_factor
             }
         except Exception as e:
-            return {"success": False, "message": f"Failed to save config.json: {e}"}
+            return {"success": False, "message": f"Failed to save config.local.json: {e}"}
 
     def revert_correction(self, factor: float = 1.0) -> dict[str, Any]:
         """Reverts motor correction factor back to uncompensated default (1.000000) or specified value."""
@@ -566,23 +558,15 @@ class MotorCalibrator:
                 print(f"Error resetting stepper correction factor: {e}")
 
         try:
-            with open(CFG_PATH, "r") as f:
-                cfg_data = json.load(f)
-            
-            if "stepper_motor" not in cfg_data:
-                cfg_data["stepper_motor"] = {}
-            cfg_data["stepper_motor"]["correction_factor"] = target_factor
-
-            with open(CFG_PATH, "w") as f:
-                json.dump(cfg_data, f, indent=2)
-
+            save_local_override("stepper_motor", "correction_factor", target_factor)
             return {
                 "success": True, 
-                "message": f"Motor reset to uncompensated base speed (factor = {target_factor:.6f})!",
+                "message": f"Motor reset to uncompensated base speed (factor = {target_factor:.6f}) in config.local.json!",
                 "correction_factor": target_factor
             }
         except Exception as e:
-            return {"success": False, "message": f"Failed to update config.json: {e}"}
+            return {"success": False, "message": f"Failed to update config.local.json: {e}"}
+
 
 
 class SteppedRotationRunner:

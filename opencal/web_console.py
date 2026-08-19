@@ -19,9 +19,18 @@ import numpy as np
 import socket
 from opencal.hardware.hardware_controller import HardwareController
 from opencal.hardware.led_manager import BLUE, GREEN, OFF, RED, WHITE, YELLOW
-from opencal.utils.config import Config
+from opencal.utils.config import (
+    Config, 
+    get_raw_config_files, 
+    save_full_local_config, 
+    reset_local_config, 
+    save_local_override,
+    LOCAL_CFG_PATH,
+    BASE_CFG_PATH
+)
 from opencal.utils.telemetry import get_pi_system_telemetry, TelemetrySessionLogger
 from opencal.utils.calibration.motor_calibrator import MotorCalibrator
+
 
 _last_net_time: float = 0.0
 _cached_net_info: dict[str, str] = {"ssid": "Disconnected", "local_ip": "127.0.0.1", "tailscale_ip": "Offline"}
@@ -264,6 +273,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
             <div class="badge"><div class="pulse-dot"></div> <span id="system-status">SYSTEM ONLINE</span></div>
+            <button onclick="openConfigModal()" style="padding: 5px 10px; font-size: 11px; background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.4); color: var(--accent-purple);">⚙️ Config JSON</button>
             <button onclick="gitPullAndRestart()" style="padding: 5px 10px; font-size: 11px; background: rgba(6, 182, 212, 0.2); border-color: rgba(6, 182, 212, 0.4); color: var(--accent-cyan);">⚡ Git Pull & Restart</button>
             <button onclick="lockStudio()" style="padding: 5px 10px; font-size: 11px; background: rgba(255,255,255,0.08);">🔒 Lock Studio</button>
             <button onclick="rebootPi()" class="danger" style="padding: 5px 10px; font-size: 11px;">🔄 Reboot</button>
@@ -286,6 +296,54 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             <div id="auth-err-msg" style="color: var(--accent-rose); font-size: 12px; margin-top: 10px; display: none;">Invalid password. Please try again.</div>
         </div>
     </div>
+
+    <!-- CONFIG JSON EDITOR MODAL -->
+    <div id="config-modal" style="display: none; position: fixed; inset: 0; background: rgba(5, 8, 15, 0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); z-index: 9998; justify-content: center; align-items: center; padding: 20px;">
+        <div class="card" style="width: 820px; max-width: 95vw; max-height: 90vh; display: flex; flex-direction: column; border: 1px solid rgba(168, 85, 247, 0.4); box-shadow: 0 25px 60px rgba(0,0,0,0.85); padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-card); padding-bottom: 12px; margin-bottom: 12px;">
+                <div>
+                    <h3 style="font-size: 18px; font-weight: 700; color: #fff; margin: 0; display: flex; align-items: center; gap: 8px;">
+                        <span>⚙️ Configuration Editor</span>
+                        <span id="cfg-modal-tag" style="font-size: 11px; padding: 2px 8px; border-radius: 4px; background: rgba(168,85,247,0.2); color: var(--accent-purple); border: 1px solid rgba(168,85,247,0.4);">config.local.json</span>
+                    </h3>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                        Machine overrides stay permanently on this Raspberry Pi and are <b>never overwritten</b> by git pulls.
+                    </div>
+                </div>
+                <button onclick="closeConfigModal()" style="padding: 4px 10px; font-size: 14px; background: rgba(255,255,255,0.06); border-radius: 6px;">✕</button>
+            </div>
+
+            <!-- Tab Switcher -->
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <button id="tab-btn-local" class="primary" style="font-size: 12px; padding: 6px 14px;" onclick="switchConfigTab('local')">📝 Machine Overrides (config.local.json)</button>
+                <button id="tab-btn-merged" class="secondary" style="font-size: 12px; padding: 6px 14px;" onclick="switchConfigTab('merged')">🔍 Active Merged Config</button>
+                <button id="tab-btn-base" class="secondary" style="font-size: 12px; padding: 6px 14px;" onclick="switchConfigTab('base')">📄 Base Defaults (config.json)</button>
+            </div>
+
+            <!-- JSON Editor Textarea -->
+            <div style="flex: 1; min-height: 340px; display: flex; flex-direction: column; position: relative;">
+                <textarea id="cfg-editor-textarea" spellcheck="false" oninput="validateConfigJsonLive()" style="flex: 1; width: 100%; height: 100%; min-height: 340px; font-family: var(--font-mono); font-size: 13px; line-height: 1.5; padding: 14px; border-radius: 8px; background: #070b14; border: 1px solid var(--border-card); color: #e2e8f0; resize: vertical; outline: none; white-space: pre;"></textarea>
+            </div>
+
+            <!-- Validation Status -->
+            <div id="cfg-validation-msg" style="margin-top: 8px; font-size: 12px; color: var(--accent-green);">
+                ✓ Valid JSON syntax
+            </div>
+
+            <!-- Action Bar -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; border-top: 1px solid var(--border-card); padding-top: 12px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; gap: 8px;">
+                    <button id="btn-save-cfg" class="primary" style="background: rgba(16, 185, 129, 0.3); border-color: var(--accent-green); color: var(--accent-green); padding: 8px 16px; font-weight: 600;" onclick="saveConfigJson()">💾 Save &amp; Apply to Machine</button>
+                    <button class="secondary" style="padding: 8px 14px;" onclick="loadConfigRaw()">🔄 Reload</button>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="danger" style="padding: 8px 12px; font-size: 12px;" onclick="resetConfigOverrides()">🗑️ Reset Machine Overrides</button>
+                    <button onclick="closeConfigModal()" style="padding: 8px 16px;">✕ Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <!-- VIDEO VIEWER MODAL -->
     <div id="video-modal" style="display: none; position: fixed; inset: 0; background: rgba(5, 8, 15, 0.9); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); z-index: 9998; justify-content: center; align-items: center; padding: 20px;">
@@ -1165,7 +1223,125 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             }
         }
 
+        // Config JSON Editor
+        let configRawData = { local_text: '{}', base_text: '{}', merged_text: '{}', current_tab: 'local' };
+
+        async function openConfigModal() {
+            document.getElementById('config-modal').style.display = 'flex';
+            await loadConfigRaw();
+            switchConfigTab('local');
+        }
+
+        function closeConfigModal() {
+            document.getElementById('config-modal').style.display = 'none';
+        }
+
+        async function loadConfigRaw() {
+            try {
+                const res = await fetchWithTimeout('/api/config/raw');
+                if (res && !res.error) {
+                    configRawData = res;
+                    configRawData.current_tab = configRawData.current_tab || 'local';
+                    switchConfigTab(configRawData.current_tab);
+                    showToast('Configuration loaded from disk');
+                }
+            } catch (err) {
+                showToast('Failed to load configuration: ' + err, true);
+            }
+        }
+
+        function switchConfigTab(tab) {
+            configRawData.current_tab = tab;
+            const textarea = document.getElementById('cfg-editor-textarea');
+            const tag = document.getElementById('cfg-modal-tag');
+            const saveBtn = document.getElementById('btn-save-cfg');
+            const btnLocal = document.getElementById('tab-btn-local');
+            const btnMerged = document.getElementById('tab-btn-merged');
+            const btnBase = document.getElementById('tab-btn-base');
+
+            btnLocal.className = tab === 'local' ? 'primary' : 'secondary';
+            btnMerged.className = tab === 'merged' ? 'primary' : 'secondary';
+            btnBase.className = tab === 'base' ? 'primary' : 'secondary';
+
+            if (tab === 'local') {
+                textarea.value = (configRawData.local_text && configRawData.local_text.trim() && configRawData.local_text !== '{}') 
+                    ? configRawData.local_text 
+                    : '{\n  "stepper_motor": {\n    "correction_factor": 1.0\n  }\n}';
+                textarea.readOnly = false;
+                textarea.style.background = '#070b14';
+                tag.innerText = 'config.local.json (Editable)';
+                tag.style.background = 'rgba(168,85,247,0.2)';
+                tag.style.color = 'var(--accent-purple)';
+                saveBtn.style.display = 'inline-block';
+            } else if (tab === 'merged') {
+                textarea.value = configRawData.merged_text;
+                textarea.readOnly = true;
+                textarea.style.background = '#0b101d';
+                tag.innerText = 'Merged Active Config (Read-Only)';
+                tag.style.background = 'rgba(6,182,212,0.2)';
+                tag.style.color = 'var(--accent-cyan)';
+                saveBtn.style.display = 'none';
+            } else if (tab === 'base') {
+                textarea.value = configRawData.base_text;
+                textarea.readOnly = true;
+                textarea.style.background = '#0b101d';
+                tag.innerText = 'config.json Base Defaults (Read-Only)';
+                tag.style.background = 'rgba(255,255,255,0.08)';
+                tag.style.color = '#cbd5e1';
+                saveBtn.style.display = 'none';
+            }
+            validateConfigJsonLive();
+        }
+
+        function validateConfigJsonLive() {
+            const textarea = document.getElementById('cfg-editor-textarea');
+            const msg = document.getElementById('cfg-validation-msg');
+            try {
+                JSON.parse(textarea.value);
+                msg.innerText = '✓ Valid JSON syntax';
+                msg.style.color = 'var(--accent-green)';
+                return true;
+            } catch (err) {
+                msg.innerText = '✗ Syntax Error: ' + err.message;
+                msg.style.color = 'var(--accent-rose)';
+                return false;
+            }
+        }
+
+        async function saveConfigJson() {
+            if (!validateConfigJsonLive()) {
+                showToast('Please fix JSON syntax errors before saving', true);
+                return;
+            }
+            const textarea = document.getElementById('cfg-editor-textarea');
+            try {
+                const parsed = JSON.parse(textarea.value);
+                const res = await postAPI('/api/config/save', { json: parsed });
+                if (res && res.success) {
+                    showToast(res.message);
+                    await loadConfigRaw();
+                    updateTelemetry();
+                } else {
+                    showToast(res ? res.message : 'Save failed', true);
+                }
+            } catch (err) {
+                showToast('Save failed: ' + err, true);
+            }
+        }
+
+        async function resetConfigOverrides() {
+            if (confirm('Are you sure you want to delete all local overrides in config.local.json? Machine will revert to base config.json.')) {
+                const res = await postAPI('/api/config/reset');
+                if (res && res.success) {
+                    showToast(res.message);
+                    await loadConfigRaw();
+                    updateTelemetry();
+                }
+            }
+        }
+
         // Motor Auto-Calibration
+
         async function startMotorAutoCal() {
             const rpm = parseFloat(document.getElementById('cal-target-rpm').value);
             const revs = parseInt(document.getElementById('cal-target-revs').value);
@@ -1791,7 +1967,12 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
             self._send_json({"networks": networks})
             return
 
+        if parsed.path == "/api/config/raw":
+            self._send_json(get_raw_config_files())
+            return
+
         if parsed.path == "/api/prints/list":
+
             files_info = []
             try:
                 # 1. Check prints directory
@@ -2373,7 +2554,56 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(e)}, status=500)
             return
 
+        if parsed.path == "/api/config/save":
+            try:
+                cfg_json = data.get("json")
+                if cfg_json is None and "content" in data:
+                    cfg_json = json.loads(data["content"])
+
+                if not isinstance(cfg_json, dict):
+                    self._send_json({"success": False, "message": "Configuration root must be a JSON object."}, status=400)
+                    return
+
+                merged = save_full_local_config(cfg_json)
+
+                # Apply live hardware settings
+                if self.hardware:
+                    if "stepper_motor" in cfg_json and "correction_factor" in cfg_json["stepper_motor"]:
+                        if self.hardware.stepper:
+                            self.hardware.stepper.set_correction_factor(float(cfg_json["stepper_motor"]["correction_factor"]))
+                    if "projector" in cfg_json:
+                        proj_cfg = cfg_json["projector"]
+                        if self.hardware.projector:
+                            if "vial_width_px" in proj_cfg:
+                                self.hardware.projector.set_vial_width(int(proj_cfg["vial_width_px"]), persist=False)
+                            if "alignment_y_offset_px" in proj_cfg:
+                                self.hardware.projector.set_alignment_y_offset(int(proj_cfg["alignment_y_offset_px"]), persist=False)
+
+                self._send_json({
+                    "success": True, 
+                    "message": "Configuration saved to config.local.json and applied to machine!",
+                    "merged": merged
+                })
+            except Exception as e:
+                self._send_json({"success": False, "message": f"Failed to save config: {e}"}, status=500)
+            return
+
+        if parsed.path == "/api/config/reset":
+            try:
+                merged = reset_local_config()
+                if self.hardware and self.hardware.stepper:
+                    self.hardware.stepper.set_correction_factor(1.0)
+                self._send_json({
+                    "success": True, 
+                    "message": "Machine overrides deleted. Reverted to repository base config.json!",
+                    "merged": merged
+                })
+            except Exception as e:
+                self._send_json({"success": False, "message": f"Failed to reset config: {e}"}, status=500)
+            return
+
         if parsed.path == "/api/sounds/toggle":
+
             try:
                 sm = getattr(self.hardware, "sound_manager", None)
                 if sm:
