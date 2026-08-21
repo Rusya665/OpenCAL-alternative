@@ -649,6 +649,20 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <span class="slider-val" id="print-rpm-val">9.0 RPM</span>
             </div>
 
+            <!-- Print Laser Wavelength Filter Selector -->
+            <div style="margin-bottom: 12px; padding: 8px 10px; background: rgba(59,130,246,0.08); border-radius: 8px; border: 1px solid rgba(59,130,246,0.25);">
+                <div style="font-size: 11px; font-weight: 600; color: #93c5fd; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                    <span>⚡ Print Laser Wavelength:</span>
+                    <span id="active-laser-badge" style="font-size: 10px; background: rgba(59,130,246,0.25); padding: 1px 6px; border-radius: 4px; color: #93c5fd; font-weight: 700;">🔵 450nm Pure Blue</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                    <button type="button" id="btn-laser-blue" class="primary" style="padding: 5px 8px; font-size: 11px; background: rgba(59,130,246,0.3); border-color: #3b82f6; color: #93c5fd;" onclick="setLaserMode('blue_450nm')">🔵 450nm Blue (Pure)</button>
+                    <button type="button" id="btn-laser-white" class="secondary" style="padding: 5px 8px; font-size: 11px;" onclick="setLaserMode('white')">⚪ White (RGB Full)</button>
+                    <button type="button" id="btn-laser-green" class="secondary" style="padding: 5px 8px; font-size: 11px;" onclick="setLaserMode('green_532nm')">🟢 532nm Green</button>
+                    <button type="button" id="btn-laser-red" class="secondary" style="padding: 5px 8px; font-size: 11px;" onclick="setLaserMode('red_638nm')">🔴 638nm Red</button>
+                </div>
+            </div>
+
             <div class="btn-group">
                 <button class="success" onclick="startSelectedPrint()">▶️ Start Print Job</button>
                 <button class="danger" onclick="stopPrintJob()">🛑 Stop Print</button>
@@ -927,6 +941,42 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         }
         function stopExpVideo() {
             postAPI('/api/projector/stop_video');
+        }
+
+        // Print Laser Wavelength Selector
+        let activeLaserMode = 'blue_450nm';
+        function setLaserMode(mode) {
+            activeLaserMode = mode;
+            postAPI('/api/projector/laser_mode', {mode: mode});
+            updateLaserButtons(mode);
+        }
+        function updateLaserButtons(mode) {
+            const map = {
+                'blue_450nm': '🔵 450nm Pure Blue',
+                'white': '⚪ White (RGB Full)',
+                'green_532nm': '🟢 532nm Green',
+                'red_638nm': '🔴 638nm Red'
+            };
+            const badge = document.getElementById('active-laser-badge');
+            if (badge && map[mode]) badge.innerText = map[mode];
+            const modes = ['blue_450nm', 'white', 'green_532nm', 'red_638nm'];
+            modes.forEach(m => {
+                const prefix = m.split('_')[0];
+                const btn = document.getElementById('btn-laser-' + prefix);
+                if (btn) {
+                    if (m === mode) {
+                        btn.className = 'primary';
+                        btn.style.borderColor = '#3b82f6';
+                        btn.style.background = 'rgba(59,130,246,0.3)';
+                        btn.style.color = '#93c5fd';
+                    } else {
+                        btn.className = 'secondary';
+                        btn.style.borderColor = '';
+                        btn.style.background = '';
+                        btn.style.color = '';
+                    }
+                }
+            });
         }
 
         // Camera functions
@@ -2563,6 +2613,19 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 if self.hardware and self.hardware.projector:
                     self.hardware.projector.stop_video()
                 self._send_json({"message": "Projector playback stopped."})
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/projector/laser_mode":
+            try:
+                mode = str(data.get("mode", "blue_450nm"))
+                proj = getattr(self.hardware, "projector", None) or (getattr(self.print_controller, "hardware", None) and getattr(self.print_controller.hardware, "projector", None))
+                if proj:
+                    proj.set_laser_mode(mode)
+                    self._send_json({"message": f"Print laser wavelength set to {mode}"})
+                else:
+                    self._send_json({"error": "Projector not available"}, status=500)
             except Exception as e:
                 self._send_json({"error": str(e)}, status=500)
             return

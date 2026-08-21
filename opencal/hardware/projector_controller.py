@@ -44,6 +44,60 @@ class ProjectorOrientation(Enum):
                 return "180"
 
 
+
+def get_laser_filtered_video(video_path: Path, laser_mode: str = "blue_450nm") -> Path:
+    """
+    Transforms grayscale/RGB projection videos into pure laser wavelength channels:
+    - 'blue_450nm': Zeroes out Red and Green, maps grayscale 100% to pure 450nm Blue laser.
+    - 'green_532nm': Zeroes out Red and Blue, maps to pure 532nm Green laser.
+    - 'red_638nm': Zeroes out Green and Blue, maps to pure 638nm Red laser.
+    - 'white' / 'rgb': Unmodified broadband white output.
+    """
+    if not video_path:
+        return video_path
+
+    vpath = Path(video_path)
+    if not vpath.exists():
+        return vpath
+
+    if laser_mode in ("white", "rgb", "none", "off", "broadband"):
+        return vpath
+
+    target_dir = Path("/tmp/opencal_laser_cache")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / f"laser_{laser_mode}_{vpath.name}"
+
+    # Return cached version if valid
+    if target_path.exists() and target_path.stat().st_mtime >= vpath.stat().st_mtime and target_path.stat().st_size > 1000:
+        return target_path
+
+    filter_map = {
+        "blue_450nm": "colorchannelmixer=rr=0:rg=0:rb=0:gr=0:gg=0:gb=0:br=0:bg=0:bb=1",
+        "green_532nm": "colorchannelmixer=rr=0:rg=0:rb=0:gr=0:gg=1:gb=0:br=0:bg=0:bb=0",
+        "red_638nm": "colorchannelmixer=rr=1:rg=0:rb=0:gr=0:gg=0:gb=0:br=0:bg=0:bb=0",
+    }
+    vf = filter_map.get(laser_mode, filter_map["blue_450nm"])
+
+    try:
+        print(f"Filtering print video {vpath.name} to {laser_mode}...")
+        cmd = [
+            "/usr/bin/ffmpeg", "-y", "-i", str(vpath),
+            "-vf", vf,
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+            "-an", str(target_path)
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=35)
+        if res.returncode == 0 and target_path.exists():
+            print(f"✓ Video successfully filtered to {laser_mode}: {target_path}")
+            return target_path
+        else:
+            print(f"Warning: ffmpeg colorchannelmixer failed: {res.stderr}")
+    except Exception as e:
+        print(f"Warning: ffmpeg laser filter error: {e}")
+
+    return vpath
+
+
 @final
 class Projector:
     def __init__(self, config: ProjectorConfig):
@@ -53,6 +107,7 @@ class Projector:
         self.calibration_dir_path = Path(config.calibration_dir_path)
         self.vial_width: int = getattr(config, "vial_width_px", 200)
         self.alignment_y_offset: int = getattr(config, "alignment_y_offset_px", 0)
+        self.laser_mode: str = getattr(config, "laser_mode", "blue_450nm")
         self.process = None
         self.thread = None  # We'll use this to keep track of the playback thread.
         self._orientation = None
@@ -118,13 +173,24 @@ class Projector:
             raise ValueError(f"Unable to parse video dimensions from output: {output}") from e
         return width, height
 
-    def play_video_with_vlc(self, video_path: Path):
+    def get_laser_mode(self) -> str:
+        """Get active print laser wavelength filter mode."""
+        return getattr(self, "laser_mode", "blue_450nm")
+
+    def set_laser_mode(self, mode: str, persist: bool = True) -> None:
+        """Set active print laser wavelength filter mode (blue_450nm, white, green_532nm, red_638nm)."""
+        self.laser_mode = str(mode)
+        print(f"Projector print laser mode set to: {self.laser_mode}")
+
+    def play_video_with_vlc(self, video_path: Path, laser_mode: str | None = None):
         """
         Play the video using cvlc (VLC command-line interface) with the window positioned
-        at x=1920 and y=0, and loop the video indefinitely.
+        at x=1920 and y=0, and loop the video indefinitely. Automatically applies laser wavelength filtering.
         """
+        mode = laser_mode if laser_mode is not None else self.get_laser_mode()
+        actual_video_path = get_laser_filtered_video(video_path, mode)
 
-        orig_width, orig_height = self.get_video_dimensions(video_path)
+        orig_width, orig_height = self.get_video_dimensions(actual_video_path)
         scale_factor = self.size / 100
         new_width = int(orig_width / scale_factor)
         new_height = int(orig_height / scale_factor)
@@ -136,7 +202,8 @@ class Projector:
         # Set up the environment for the video
         env = os.environ.copy()
         env["DISPLAY"] = ":0"
-        # env["XAUTHORITY"] = "/home/opencal/.Xauthority"
+        env["WAYLAND_DISPLAY"] = os.environ.get("WAYLAND_DISPLAY", "wayland-0")
+        env["XDG_RUNTIME_DIR"] = os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")
 
         # VLC command
         command = [
@@ -149,7 +216,7 @@ class Projector:
             f"--croppadd-cropright={int(crop_x)}",
             f"--croppadd-croptop={int(crop_y)}",
             f"--croppadd-cropbottom={int(crop_y)}",
-            str(video_path),
+            str(actual_video_path),
         ]
         print(" ".join(command))
 
@@ -157,7 +224,7 @@ class Projector:
             self.video_playing.set()
         self.process = subprocess.Popen(command, env=env)
         threading.Thread(target=self._monitor_playback, args=(self.process,), daemon=True).start()
-        print("Video playback started.")
+        print(f"Video playback started with laser mode [{mode}].")
 
     def _monitor_playback(self, proc):
         try:
