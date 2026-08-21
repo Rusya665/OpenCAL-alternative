@@ -225,6 +225,16 @@ class ProjectorConfig:
         self.vial_width_px: int = int(config.get("vial_width_px", 200))
         self.alignment_y_offset_px: int = int(config.get("alignment_y_offset_px", 0))
         self.default_volume: int = int(config.get("default_volume", 20))
+        self.orientation: str = str(config.get("orientation", "90"))
+
+
+def save_projector_orientation(orientation: str) -> None:
+    """Persist projector display orientation (e.g. '90', '270', 'normal') to config.local.json."""
+    try:
+        save_local_override("projector", "orientation", str(orientation))
+        print(f"✓ Saved projector orientation = {orientation} to config.local.json")
+    except Exception as e:
+        print(f"Error saving projector orientation: {e}")
 
 
 def save_vial_width(width: int) -> None:

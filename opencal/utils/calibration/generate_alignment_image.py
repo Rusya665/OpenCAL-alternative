@@ -43,6 +43,7 @@ HOLE_WIDTH    = 3             # px — alignment hole stroke (slightly bolder)
 ARC_STEPS     = 120           # line segments per arc
 
 OUT_PATH = Path(__file__).parent / "alignment_tool.png"
+ALT_OUT_PATH = Path(__file__).parent / "OpenCAL_Alignment_Calibration_Image.png"
 
 # ── DXF path ─────────────────────────────────────────────────────────────────
 
@@ -51,11 +52,6 @@ if len(sys.argv) > 1:
 else:
     # Default: look next to this script
     DXF_PATH = Path(__file__).parent / "Cross Strut - Cross Strut.dxf"
-
-if not DXF_PATH.exists():
-    print(f"ERROR: DXF file not found: {DXF_PATH}")
-    print("Usage: python generate_alignment_image.py <path/to/file.dxf>")
-    sys.exit(1)
 
 # ── Coordinate helpers ────────────────────────────────────────────────────────
 
@@ -125,82 +121,139 @@ def _fill_slot_h(draw: ImageDraw.ImageDraw,
     draw.ellipse([px_outer - r, py - r, px_outer + r, py + r], fill="white")
 
 
+def draw_orientation_indicators(draw: ImageDraw.ImageDraw, W: int, H: int) -> None:
+    """Draws prominent directional arrows and labels so orientation is immediately verified."""
+    cx = W // 2
+
+    # 1. Axis of Rotation (AoR) vertical centerline
+    draw.line([(cx, 100), (cx, H - 100)], fill=(100, 100, 100), width=2)
+
+    # Fonts for labels
+    try:
+        from PIL import ImageFont
+        font_large = ImageFont.truetype("arial.ttf", 36)
+        font_medium = ImageFont.truetype("arial.ttf", 30)
+    except Exception:
+        from PIL import ImageFont
+        font_large = ImageFont.load_default(size=36)
+        font_medium = ImageFont.load_default(size=30)
+
+    # 2. TOP Arrow (pointing up towards the rotary chuck / vial top)
+    draw.polygon([(cx, 30), (cx - 25, 75), (cx + 25, 75)], fill="white")
+    draw.text((cx - 180, 85), "▲ TOP / CHUCK (Y=0)", fill="white", font=font_large)
+
+    # 3. BOTTOM Arrow (pointing down towards vial base)
+    draw.polygon([(cx, H - 30), (cx - 25, H - 75), (cx + 25, H - 75)], fill="white")
+    draw.text((cx - 175, H - 125), "▼ BOTTOM / BASE", fill="white", font=font_large)
+
+    # 4. LEFT / RIGHT lateral indicators
+    draw.text((30, H // 2 - 20), "◄ LEFT", fill="white", font=font_medium)
+    draw.text((W - 160, H // 2 - 20), "RIGHT ►", fill="white", font=font_medium)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    print(f"Reading DXF: {DXF_PATH}")
-    doc = ezdxf.readfile(str(DXF_PATH))
-    msp = doc.modelspace()
+    if DXF_PATH.exists():
+        print(f"Reading DXF: {DXF_PATH}")
+        doc = ezdxf.readfile(str(DXF_PATH))
+        msp = doc.modelspace()
 
-    img  = Image.new("RGB", (W, H), "black")
-    draw = ImageDraw.Draw(img)
+        img  = Image.new("RGB", (W, H), "black")
+        draw = ImageDraw.Draw(img)
 
-    lines   = 0
-    arcs    = 0
-    circles = 0
+        lines   = 0
+        arcs    = 0
+        circles = 0
 
-    for entity in msp:
-        layer = entity.dxf.layer if entity.dxf.hasattr("layer") else ""
-        if layer not in ("VISIBLE", ""):
-            continue  # skip construction/annotation layers
+        for entity in msp:
+            layer = entity.dxf.layer if entity.dxf.hasattr("layer") else ""
+            if layer not in ("VISIBLE", ""):
+                continue  # skip construction/annotation layers
 
-        etype = entity.dxftype()
+            etype = entity.dxftype()
 
-        if etype == "LINE":
-            s  = entity.dxf.start
-            e  = entity.dxf.end
-            x1, y1 = to_px(s.x, s.y)
-            x2, y2 = to_px(e.x, e.y)
-            draw_line(draw, x1, y1, x2, y2)
-            lines += 1
+            if etype == "LINE":
+                s  = entity.dxf.start
+                e  = entity.dxf.end
+                x1, y1 = to_px(s.x, s.y)
+                x2, y2 = to_px(e.x, e.y)
+                draw_line(draw, x1, y1, x2, y2)
+                lines += 1
 
-        elif etype == "ARC":
-            c   = entity.dxf.center
-            r   = entity.dxf.radius * PX_PER_MM
-            sa  = entity.dxf.start_angle
-            ea  = entity.dxf.end_angle
-            px, py = to_px(c.x, c.y)
-            draw_arc(draw, px, py, r, sa, ea)
-            arcs += 1
+            elif etype == "ARC":
+                c   = entity.dxf.center
+                r   = entity.dxf.radius * PX_PER_MM
+                sa  = entity.dxf.start_angle
+                ea  = entity.dxf.end_angle
+                px, py = to_px(c.x, c.y)
+                draw_arc(draw, px, py, r, sa, ea)
+                arcs += 1
 
-        elif etype == "CIRCLE":
-            c  = entity.dxf.center
-            r  = entity.dxf.radius * PX_PER_MM
-            px, py = to_px(c.x, c.y)
-            # Alignment holes filled solid white for clear projection
-            draw.ellipse([px - r, py - r, px + r, py + r], fill="white")
-            circles += 1
+            elif etype == "CIRCLE":
+                c  = entity.dxf.center
+                r  = entity.dxf.radius * PX_PER_MM
+                px, py = to_px(c.x, c.y)
+                # Alignment holes filled solid white for clear projection
+                draw.ellipse([px - r, py - r, px + r, py + r], fill="white")
+                circles += 1
 
-    print(f"  Lines: {lines}  Arcs: {arcs}  Circles: {circles}")
+        print(f"  Lines: {lines}  Arcs: {arcs}  Circles: {circles}")
 
-    # Fill the 4 elongated alignment slots (stadium shapes from DXF geometry)
-    _fill_slot_v(draw, x_mm=0,   y_inner_mm=14,   y_outer_mm=49.487,  r_mm=1.0)  # top
-    _fill_slot_v(draw, x_mm=0,   y_inner_mm=-14,  y_outer_mm=-49.487, r_mm=1.0)  # bottom
-    _fill_slot_h(draw, x_inner_mm=14,  x_outer_mm=32,  y_mm=0, r_mm=1.0)          # right
-    _fill_slot_h(draw, x_inner_mm=-14, x_outer_mm=-32, y_mm=0, r_mm=1.0)          # left
-    print("  Filled 4 alignment slots")
+        # Fill the 4 elongated alignment slots (stadium shapes from DXF geometry)
+        _fill_slot_v(draw, x_mm=0,   y_inner_mm=14,   y_outer_mm=49.487,  r_mm=1.0)  # top
+        _fill_slot_v(draw, x_mm=0,   y_inner_mm=-14,  y_outer_mm=-49.487, r_mm=1.0)  # bottom
+        _fill_slot_h(draw, x_inner_mm=14,  x_outer_mm=32,  y_mm=0, r_mm=1.0)          # right
+        _fill_slot_h(draw, x_inner_mm=-14, x_outer_mm=-32, y_mm=0, r_mm=1.0)          # left
+        print("  Filled 4 alignment slots")
 
-    # Corner numbers so orientation can be read from the projection
-    font_size = 80
-    try:
-        from PIL import ImageFont
-        font = ImageFont.truetype("arial.ttf", font_size)
-    except Exception:
-        font = ImageFont.load_default(size=font_size)
+        # Corner numbers so orientation can be read from the projection
+        font_size = 80
+        try:
+            from PIL import ImageFont
+            font = ImageFont.truetype("arial.ttf", font_size)
+        except Exception:
+            from PIL import ImageFont
+            font = ImageFont.load_default(size=font_size)
 
-    margin = 20
-    corners = {
-        "1": (margin, margin),                      # top-left
-        "2": (W - margin - font_size, margin),      # top-right
-        "3": (margin, H - margin - font_size),      # bottom-left
-        "4": (W - margin - font_size, H - margin - font_size),  # bottom-right
-    }
-    for label, (x, y) in corners.items():
-        draw.text((x, y), label, fill="white", font=font)
+        margin = 20
+        corners = {
+            "1": (margin, margin),                      # top-left
+            "2": (W - margin - font_size, margin),      # top-right
+            "3": (margin, H - margin - font_size),      # bottom-left
+            "4": (W - margin - font_size, H - margin - font_size),  # bottom-right
+        }
+        for label, (x, y) in corners.items():
+            draw.text((x, y), label, fill="white", font=font)
+    elif OUT_PATH.exists():
+        print(f"DXF not found, loading existing base image: {OUT_PATH}")
+        img = Image.open(OUT_PATH).convert("RGB")
+        if img.size != (W, H):
+            img = img.resize((W, H))
+        draw = ImageDraw.Draw(img)
+    else:
+        print(f"Generating synthetic alignment pattern on {W}x{H} canvas")
+        img  = Image.new("RGB", (W, H), "black")
+        draw = ImageDraw.Draw(img)
+        # Draw center crosshair
+        draw.line([(cx_px - 100, cy_px), (cx_px + 100, cy_px)], fill="white", width=LINE_WIDTH)
+        draw.line([(cx_px, cy_px - 100), (cx_px, cy_px + 100)], fill="white", width=LINE_WIDTH)
+        # Draw central circle fiducial
+        draw.ellipse([cx_px - 50, cy_px - 50, cx_px + 50, cy_px + 50], outline="white", width=LINE_WIDTH)
+        # Fill alignment slots
+        _fill_slot_v(draw, x_mm=0,   y_inner_mm=14,   y_outer_mm=49.487,  r_mm=1.0)
+        _fill_slot_v(draw, x_mm=0,   y_inner_mm=-14,  y_outer_mm=-49.487, r_mm=1.0)
+        _fill_slot_h(draw, x_inner_mm=14,  x_outer_mm=32,  y_mm=0, r_mm=1.0)
+        _fill_slot_h(draw, x_inner_mm=-14, x_outer_mm=-32, y_mm=0, r_mm=1.0)
+
+    # Draw orientation indicators & AoR centerline
+    draw_orientation_indicators(draw, W, H)
 
     img.save(OUT_PATH)
+    img.save(ALT_OUT_PATH)
     print(f"Saved: {OUT_PATH}")
-    print(f"Canvas: {W_OUT}×{H_OUT} px  |  Scale: {PX_PER_MM:.2f} px/mm  ({PIXEL_SIZE_MM*1000:.1f} µm/pixel)")
+    print(f"Saved: {ALT_OUT_PATH}")
+    print(f"Canvas: {W}×{H} px (portrait)  |  Scale: {PX_PER_MM:.2f} px/mm  ({PIXEL_SIZE_MM*1000:.1f} µm/pixel)")
 
 
 if __name__ == "__main__":

@@ -824,13 +824,13 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <button class="secondary" style="background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.4); color: var(--accent-purple);" onclick="postAPI('/api/projector/power/reboot')">🔄 Reboot Projector</button>
             </div>
 
-            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">PROJECTOR ROTATION & ORIENTATION:</div>
-            <div class="btn-group" style="margin-bottom: 14px; flex-wrap: wrap;">
-                <button type="button" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="postAPI('/api/projector/orientation', {orientation: 'normal'})">0° Normal</button>
-                <button type="button" class="primary" style="padding: 4px 8px; font-size: 11px; background: rgba(6, 182, 212, 0.2); border-color: var(--accent-cyan); color: var(--accent-cyan);" onclick="postAPI('/api/projector/orientation', {orientation: '90'})">🎯 90° CW (Upright)</button>
-                <button type="button" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="postAPI('/api/projector/orientation', {orientation: '180'})">180° Flip</button>
-                <button type="button" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="postAPI('/api/projector/orientation', {orientation: '270'})">270° CCW</button>
-                <button type="button" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="postAPI('/api/projector/orientation', {orientation: 'flipped-90'})">🪞 Flipped-90</button>
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">PROJECTOR ROTATION & ORIENTATION (PERSISTED):</div>
+            <div class="btn-group" id="proj-orient-btn-group" style="margin-bottom: 14px; flex-wrap: wrap;">
+                <button type="button" id="btn-orient-normal" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="setProjectorOrientation('normal')">0° Normal</button>
+                <button type="button" id="btn-orient-90" class="primary" style="padding: 4px 8px; font-size: 11px; background: rgba(6, 182, 212, 0.2); border-color: var(--accent-cyan); color: var(--accent-cyan);" onclick="setProjectorOrientation('90')">🎯 90° CW (Upright)</button>
+                <button type="button" id="btn-orient-180" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="setProjectorOrientation('180')">180° Flip</button>
+                <button type="button" id="btn-orient-270" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="setProjectorOrientation('270')">270° CCW</button>
+                <button type="button" id="btn-orient-flipped-90" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="setProjectorOrientation('flipped-90')">🪞 Flipped-90</button>
             </div>
 
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">TEST VIDEO PLAYBACK:</div>
@@ -969,6 +969,31 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                         btn.style.borderColor = '#3b82f6';
                         btn.style.background = 'rgba(59,130,246,0.3)';
                         btn.style.color = '#93c5fd';
+                    } else {
+                        btn.className = 'secondary';
+                        btn.style.borderColor = '';
+                        btn.style.background = '';
+                        btn.style.color = '';
+                    }
+                }
+            });
+        }
+
+        // Projector Orientation functions
+        function setProjectorOrientation(orient) {
+            postAPI('/api/projector/orientation', {orientation: orient});
+            updateOrientationButtons(orient);
+        }
+        function updateOrientationButtons(orient) {
+            const orients = ['normal', '90', '180', '270', 'flipped-90'];
+            orients.forEach(o => {
+                const btn = document.getElementById('btn-orient-' + o);
+                if (btn) {
+                    if (o === orient) {
+                        btn.className = 'primary';
+                        btn.style.borderColor = 'var(--accent-cyan)';
+                        btn.style.background = 'rgba(6, 182, 212, 0.25)';
+                        btn.style.color = 'var(--accent-cyan)';
                     } else {
                         btn.className = 'secondary';
                         btn.style.borderColor = '';
@@ -1661,6 +1686,9 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                         soundsEnabled = data.sounds_enabled;
                         updateSoundsBtn();
                     }
+                    if (data.projector_orientation) {
+                        updateOrientationButtons(data.projector_orientation);
+                    }
                 }
 
                 // 2. Motor Calibration Status
@@ -2005,6 +2033,11 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                             self.hardware.sound_manager.is_enabled()
                             if (self.hardware and getattr(self.hardware, "sound_manager", None))
                             else True
+                        ),
+                        "projector_orientation": (
+                            self.hardware.projector.get_projector_orientation().to_wlr_randr()
+                            if (self.hardware and self.hardware.projector)
+                            else "90"
                         ),
                     }
                 )
@@ -2806,7 +2839,9 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 env["XDG_RUNTIME_DIR"] = os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")
                 res = subprocess.run(["wlr-randr", "--output", "HDMI-A-1", "--transform", orient], env=env, capture_output=True, text=True)
                 if res.returncode == 0:
-                    self._send_json({"message": f"Projector display orientation set to {orient}"})
+                    from opencal.utils.config import save_projector_orientation
+                    save_projector_orientation(orient)
+                    self._send_json({"message": f"Projector display orientation set to {orient} and saved!"})
                 else:
                     self._send_json({"error": res.stderr.strip() or "Failed to rotate display"}, status=500)
             except Exception as e:

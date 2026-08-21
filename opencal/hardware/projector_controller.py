@@ -13,7 +13,13 @@ from opencal.utils.config import ProjectorConfig
 
 
 class ProjectorOrientation(Enum):
-    # FIXME: These values are kinda misleading
+    """
+    Wayland wlr-randr display rotation mapping:
+    - NORMAL: Landscape 1920x1080 ('normal')
+    - LEFT:   Rotated 90° CCW -> Native portrait 1080x1920 canvas ('90') for Optoma ML1080 left-side mount
+    - RIGHT:  Rotated 270° CCW ('270')
+    - FLIPPED: Inverted 180° ('180')
+    """
     NORMAL = "normal"
     LEFT = "left"
     RIGHT = "right"
@@ -110,8 +116,14 @@ class Projector:
         self.thread = None  # We'll use this to keep track of the playback thread.
         self._orientation = None
         self.volume: int = getattr(config, "default_volume", 20)
-        self.video_playing: threading.Event | None = None
+        self.orientation_str: str = getattr(config, "orientation", "90")
         self.set_volume(self.volume, persist=False)
+        # Automatically sync display orientation from configured setting
+        try:
+            orient_enum = ProjectorOrientation.from_wlr_randr(self.orientation_str)
+            self.set_projector_orientation(orient_enum, persist=False)
+        except Exception as e:
+            print(f"Initial orientation sync notice: {e}")
         # Automatically power on and wake projector on application boot/restart
         threading.Thread(target=self.turn_on_projector, daemon=True).start()
 
@@ -134,12 +146,18 @@ class Projector:
 
         return orient
 
-    def set_projector_orientation(self, orient: ProjectorOrientation) -> None:
-        current_orient = self.get_projector_orientation()
-        if orient == current_orient:
-            return
-
+    def set_projector_orientation(self, orient: ProjectorOrientation, persist: bool = False) -> None:
         transform = orient.to_wlr_randr()
+        if persist:
+            from opencal.utils.config import save_projector_orientation
+            save_projector_orientation(transform)
+
+        try:
+            current_orient = self.get_projector_orientation()
+            if orient == current_orient:
+                return
+        except Exception:
+            pass
 
         cmd = f"wlr-randr --output HDMI-A-1 --transform {transform}"
         result = subprocess.run(cmd.split(), capture_output=True, text=True)
