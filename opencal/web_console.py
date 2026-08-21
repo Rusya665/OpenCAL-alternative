@@ -819,6 +819,45 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <button type="button" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="postAPI('/api/projector/orientation', {orientation: 'flipped-90'})">🪞 Flipped-90</button>
             </div>
 
+            <!-- Rainbow & Color Patch Projection Studio -->
+            <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.1); margin-bottom: 14px;">
+                <div style="font-size: 12px; font-weight: 700; color: var(--accent-cyan); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                    <span>🌈 Projector Rainbow & Spectrum Tester</span>
+                    <span style="font-size: 10px; color: var(--accent-green); background: rgba(34,197,94,0.15); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(34,197,94,0.3);">100% Brightness</span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">Project solid full-brightness spectrum patches into the center of the vial to test light penetration and resin curing:</div>
+                
+                <!-- Quick Preset Rainbow Color Buttons -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); gap: 6px; margin-bottom: 10px;">
+                    <button type="button" style="padding: 6px 4px; font-size: 11px; font-weight: 700; background: rgba(239,68,68,0.25); border: 1px solid #ef4444; color: #fca5a5; border-radius: 6px;" onclick="projectColor('#ff0000')">🔴 Red</button>
+                    <button type="button" style="padding: 6px 4px; font-size: 11px; font-weight: 700; background: rgba(249,115,22,0.25); border: 1px solid #f97316; color: #fdba74; border-radius: 6px;" onclick="projectColor('#ff7a00')">🟠 Orange</button>
+                    <button type="button" style="padding: 6px 4px; font-size: 11px; font-weight: 700; background: rgba(234,179,8,0.25); border: 1px solid #eab308; color: #fde047; border-radius: 6px;" onclick="projectColor('#ffff00')">🟡 Yellow</button>
+                    <button type="button" style="padding: 6px 4px; font-size: 11px; font-weight: 700; background: rgba(34,197,94,0.25); border: 1px solid #22c55e; color: #86efac; border-radius: 6px;" onclick="projectColor('#00ff00')">🟢 Green</button>
+                    <button type="button" style="padding: 6px 4px; font-size: 11px; font-weight: 700; background: rgba(6,182,212,0.25); border: 1px solid #06b6d4; color: #67e8f9; border-radius: 6px;" onclick="projectColor('#00f0ff')">🔵 Cyan</button>
+                    <button type="button" style="padding: 6px 4px; font-size: 11px; font-weight: 700; background: rgba(59,130,246,0.25); border: 1px solid #3b82f6; color: #93c5fd; border-radius: 6px;" onclick="projectColor('#002bff')">🔷 Blue</button>
+                    <button type="button" style="padding: 6px 4px; font-size: 11px; font-weight: 700; background: rgba(168,85,247,0.25); border: 1px solid #a855f7; color: #d8b4fe; border-radius: 6px;" onclick="projectColor('#8b00ff')">🟣 Violet</button>
+                    <button type="button" style="padding: 6px 4px; font-size: 11px; font-weight: 700; background: rgba(236,72,153,0.25); border: 1px solid #ec4899; color: #f472b6; border-radius: 6px;" onclick="projectColor('#ff00ff')">🌸 Magenta</button>
+                    <button type="button" style="padding: 6px 4px; font-size: 11px; font-weight: 700; background: rgba(255,255,255,0.25); border: 1px solid #ffffff; color: #ffffff; border-radius: 6px;" onclick="projectColor('#ffffff')">⚪ White</button>
+                </div>
+
+                <!-- Custom Color Picker & Size Options -->
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <span style="font-size: 11px; color: var(--text-muted);">Custom:</span>
+                    <input type="color" id="proj-custom-color" value="#00ff00" style="width: 36px; height: 28px; padding: 0; border: none; border-radius: 4px; cursor: pointer; background: transparent;" onchange="projectColor(this.value)">
+                    <button type="button" style="padding: 4px 10px; font-size: 11px;" onclick="projectColor(document.getElementById('proj-custom-color').value)">Project</button>
+
+                    <span style="font-size: 11px; color: var(--text-muted); margin-left: 6px;">Size:</span>
+                    <select id="proj-color-size" style="padding: 3px 8px; font-size: 11px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 4px;">
+                        <option value="vial" selected>🎯 Vial Center (220px)</option>
+                        <option value="column">↕ Column (350px)</option>
+                        <option value="wide">⬛ Wide Box (500px)</option>
+                        <option value="full">📺 Full Screen Solid</option>
+                    </select>
+
+                    <button type="button" class="danger" style="margin-left: auto; padding: 4px 12px; font-size: 11px;" onclick="stopColorPatch()">⏹ Blackout / Stop</button>
+                </div>
+            </div>
+
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">TEST VIDEO PLAYBACK:</div>
             <div class="btn-group">
                 <button class="primary" onclick="playExpVideo('oh_hai_mark.mp4')">▶ Play: Oh Hai Mark</button>
@@ -853,6 +892,22 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             } catch (e) {
                 showToast('Error: ' + e);
             }
+        }
+
+        // Projector Color Patch & Video functions
+        function projectColor(hex) {
+            const sizeMode = document.getElementById('proj-color-size') ? document.getElementById('proj-color-size').value : 'vial';
+            postAPI('/api/projector/color', {color: hex, size: sizeMode});
+        }
+        function stopColorPatch() {
+            postAPI('/api/projector/color/stop');
+        }
+        function playExpVideo(vid) {
+            const vol = parseInt(document.getElementById('proj-vol-slider').value) || 20;
+            postAPI('/api/projector/play_experimental', {video: vid, volume: vol});
+        }
+        function stopExpVideo() {
+            postAPI('/api/projector/stop_video');
         }
 
         // Camera functions
@@ -2533,6 +2588,54 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 if proj:
                     proj.reboot_projector()
                     self._send_json({"message": "Projector reboot cycle started..."})
+                else:
+                    self._send_json({"error": "Projector not available"}, status=500)
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/projector/color":
+            try:
+                proj = getattr(self.hardware, "projector", None) or (getattr(self.print_controller, "hardware", None) and getattr(self.print_controller.hardware, "projector", None))
+                if proj:
+                    c_val = data.get("color", "#ff0000")
+                    size_mode = data.get("size", "vial")
+                    
+                    # Parse color hex or rgb
+                    if isinstance(c_val, str) and c_val.startswith("#"):
+                        h = c_val.lstrip("#")
+                        if len(h) == 6:
+                            rgb = [int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)]
+                        else:
+                            rgb = [255, 0, 0]
+                    elif isinstance(c_val, (list, tuple)):
+                        rgb = [int(c_val[0]), int(c_val[1]), int(c_val[2])]
+                    else:
+                        rgb = [255, 0, 0]
+
+                    full_screen = (size_mode == "full")
+                    w = None
+                    if size_mode == "vial":
+                        w = proj.vial_width
+                    elif size_mode == "column":
+                        w = 350
+                    elif size_mode == "wide":
+                        w = 500
+
+                    proj.project_color_patch(color_rgb=rgb, width_px=w, full_screen=full_screen)
+                    self._send_json({"message": f"Projecting {c_val} ({size_mode}) at full brightness!"})
+                else:
+                    self._send_json({"error": "Projector not available"}, status=500)
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
+            return
+
+        if parsed.path == "/api/projector/color/stop":
+            try:
+                proj = getattr(self.hardware, "projector", None) or (getattr(self.print_controller, "hardware", None) and getattr(self.print_controller.hardware, "projector", None))
+                if proj:
+                    proj.stop_video()
+                    self._send_json({"message": "Projector color test stopped (Blackout)."})
                 else:
                     self._send_json({"error": "Projector not available"}, status=500)
             except Exception as e:

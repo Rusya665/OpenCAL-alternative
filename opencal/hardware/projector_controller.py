@@ -383,22 +383,84 @@ class Projector:
 
         env = os.environ.copy()
         env["DISPLAY"] = ":0"
+        env["WAYLAND_DISPLAY"] = os.environ.get("WAYLAND_DISPLAY", "wayland-0")
+        env["XDG_RUNTIME_DIR"] = os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")
 
+        # Try cvlc with loop
+        command = [
+            "/usr/bin/cvlc",
+            "--fullscreen",
+            "--loop",
+            "--no-video-title-show",
+            str(image_path),
+        ]
         try:
-            command = [
-                "/usr/bin/mpv",
-                "--fs",  # fullscreen
-                "--loop-file=inf",  # loop indefinitely
-                "--no-audio",  # no sound
-                "--image-display-duration=inf",  # keep image up forever
-                str(image_path),
-            ]
+            if self.video_playing:
+                self.video_playing.set()
             self.process = subprocess.Popen(command, env=env)
+            threading.Thread(target=self._monitor_playback, args=(self.process,), daemon=True).start()
             print(f"Image displayed: {image_path}")
-        except FileNotFoundError:
-            print(f"Warning: /usr/bin/mpv not installed. Cannot display still image {image_path}.")
         except Exception as e:
-            print(f"Warning: Could not display image: {e}")
+            print(f"Warning: Could not display image with cvlc: {e}")
+
+    def project_color_patch(
+        self,
+        color_rgb: tuple[int, int, int] | list[int] = (255, 0, 0),
+        width_px: int | None = None,
+        height_px: int | None = None,
+        offset_y: int | None = None,
+        full_screen: bool = False
+    ):
+        """
+        Projects a solid 100% brightness color rectangle in the center of the projector (matching vial/video size)
+        or fullscreen to test brightness and illumination wavelengths.
+        """
+        # Determine current display orientation
+        is_portrait = True
+        try:
+            res = subprocess.run(
+                ["wlr-randr", "--output", "HDMI-A-1", "--json"],
+                env={"WAYLAND_DISPLAY": "wayland-0", "XDG_RUNTIME_DIR": "/run/user/1000"},
+                capture_output=True, text=True
+            )
+            if res.returncode == 0:
+                data = json.loads(res.stdout)
+                transform = data[0].get("transform", "normal")
+                if transform in ("normal", "180", "flipped", "flipped-180"):
+                    is_portrait = False
+        except Exception:
+            pass
+
+        if is_portrait:
+            canvas_w, canvas_h = 1080, 1920
+            default_w, default_h = self.vial_width, 1000
+        else:
+            canvas_w, canvas_h = 1920, 1080
+            default_w, default_h = self.vial_width, 650
+
+        arr = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)
+
+        if full_screen:
+            arr[:, :] = color_rgb
+        else:
+            w = int(width_px) if width_px is not None else default_w
+            h = int(height_px) if height_px is not None else default_h
+            off_y = int(offset_y) if offset_y is not None else self.alignment_y_offset
+
+            cx = canvas_w // 2
+            cy = (canvas_h // 2) + off_y
+
+            x1 = max(0, cx - (w // 2))
+            x2 = min(canvas_w, cx + (w // 2))
+            y1 = max(0, cy - (h // 2))
+            y2 = min(canvas_h, cy + (h // 2))
+
+            arr[y1:y2, x1:x2] = color_rgb
+
+        img_path = Path("/tmp/projector_color_patch.png")
+        Image.fromarray(arr, "RGB").save(img_path)
+        self.display_image(img_path)
+        print(f"Projecting color patch {color_rgb} (size: {width_px or default_w}x{height_px or default_h})")
 
     def start_image_thread_for_image(self, image_path: Path):
         """
