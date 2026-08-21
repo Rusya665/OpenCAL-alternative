@@ -2614,10 +2614,11 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/projector/orientation":
             try:
-                orient = data.get("orientation", "90")
+                orient = str(data.get("orientation", "90"))
                 env = os.environ.copy()
-                env["WAYLAND_DISPLAY"] = "wayland-0"
-                res = subprocess.run(["wlr-randr", "--output", "HDMI-A-1", "--transform", str(orient)], env=env, capture_output=True, text=True)
+                env["WAYLAND_DISPLAY"] = os.environ.get("WAYLAND_DISPLAY", "wayland-0")
+                env["XDG_RUNTIME_DIR"] = os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")
+                res = subprocess.run(["wlr-randr", "--output", "HDMI-A-1", "--transform", orient], env=env, capture_output=True, text=True)
                 if res.returncode == 0:
                     self._send_json({"message": f"Projector display orientation set to {orient}"})
                 else:
