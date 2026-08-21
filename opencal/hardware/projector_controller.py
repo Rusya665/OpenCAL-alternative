@@ -45,13 +45,10 @@ class ProjectorOrientation(Enum):
 
 
 
-def get_laser_filtered_video(video_path: Path, laser_mode: str = "blue_450nm") -> Path:
+def get_laser_filtered_video(video_path: Path, laser_mode: str = "white") -> Path:
     """
-    Transforms grayscale/RGB projection videos into pure laser wavelength channels:
-    - 'blue_450nm': Zeroes out Red and Green, maps grayscale 100% to pure 450nm Blue laser.
-    - 'green_532nm': Zeroes out Red and Blue, maps to pure 532nm Green laser.
-    - 'red_638nm': Zeroes out Green and Blue, maps to pure 638nm Red laser.
-    - 'white' / 'rgb': Unmodified broadband white output.
+    Returns laser-filtered video if cached and complete, otherwise returns video_path directly
+    so printing starts instantly with zero lag.
     """
     if not video_path:
         return video_path
@@ -67,34 +64,35 @@ def get_laser_filtered_video(video_path: Path, laser_mode: str = "blue_450nm") -
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / f"laser_{laser_mode}_{vpath.name}"
 
-    # Return cached version if valid
-    if target_path.exists() and target_path.stat().st_mtime >= vpath.stat().st_mtime and target_path.stat().st_size > 1000:
+    # Return cached version if valid and complete
+    if target_path.exists() and target_path.stat().st_mtime >= vpath.stat().st_mtime and target_path.stat().st_size > 50000:
         return target_path
 
-    filter_map = {
-        "blue_450nm": "colorchannelmixer=rr=0:rg=0:rb=0:gr=0:gg=0:gb=0:br=0:bg=0:bb=1",
-        "green_532nm": "colorchannelmixer=rr=0:rg=0:rb=0:gr=0:gg=1:gb=0:br=0:bg=0:bb=0",
-        "red_638nm": "colorchannelmixer=rr=1:rg=0:rb=0:gr=0:gg=0:gb=0:br=0:bg=0:bb=0",
-    }
-    vf = filter_map.get(laser_mode, filter_map["blue_450nm"])
+    # If not ready, launch background conversion so future runs have it, but return vpath now
+    def _convert_bg():
+        tmp_target = target_dir / f"tmp_{laser_mode}_{vpath.name}"
+        filter_map = {
+            "blue_450nm": "colorchannelmixer=rr=0:rg=0:rb=0:gr=0:gg=0:gb=0:br=0:bg=0:bb=1",
+            "green_532nm": "colorchannelmixer=rr=0:rg=0:rb=0:gr=0:gg=1:gb=0:br=0:bg=0:bb=0",
+            "red_638nm": "colorchannelmixer=rr=1:rg=0:rb=0:gr=0:gg=0:gb=0:br=0:bg=0:bb=0",
+        }
+        vf = filter_map.get(laser_mode, filter_map["blue_450nm"])
+        try:
+            cmd = [
+                "/usr/bin/ffmpeg", "-y", "-i", str(vpath),
+                "-vf", vf,
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+                "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                "-an", str(tmp_target)
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if res.returncode == 0 and tmp_target.exists() and tmp_target.stat().st_size > 10000:
+                tmp_target.rename(target_path)
+                print(f"✓ Background laser filter complete: {target_path}")
+        except Exception as e:
+            print(f"Background laser conversion warning: {e}")
 
-    try:
-        print(f"Filtering print video {vpath.name} to {laser_mode}...")
-        cmd = [
-            "/usr/bin/ffmpeg", "-y", "-i", str(vpath),
-            "-vf", vf,
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
-            "-an", str(target_path)
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=35)
-        if res.returncode == 0 and target_path.exists():
-            print(f"✓ Video successfully filtered to {laser_mode}: {target_path}")
-            return target_path
-        else:
-            print(f"Warning: ffmpeg colorchannelmixer failed: {res.stderr}")
-    except Exception as e:
-        print(f"Warning: ffmpeg laser filter error: {e}")
-
+    threading.Thread(target=_convert_bg, daemon=True).start()
     return vpath
 
 
@@ -107,7 +105,7 @@ class Projector:
         self.calibration_dir_path = Path(config.calibration_dir_path)
         self.vial_width: int = getattr(config, "vial_width_px", 200)
         self.alignment_y_offset: int = getattr(config, "alignment_y_offset_px", 0)
-        self.laser_mode: str = getattr(config, "laser_mode", "blue_450nm")
+        self.laser_mode: str = getattr(config, "laser_mode", "white")
         self.process = None
         self.thread = None  # We'll use this to keep track of the playback thread.
         self._orientation = None

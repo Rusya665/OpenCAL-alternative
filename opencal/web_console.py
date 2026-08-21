@@ -653,11 +653,11 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             <div style="margin-bottom: 12px; padding: 8px 10px; background: rgba(59,130,246,0.08); border-radius: 8px; border: 1px solid rgba(59,130,246,0.25);">
                 <div style="font-size: 11px; font-weight: 600; color: #93c5fd; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
                     <span>⚡ Print Laser Wavelength:</span>
-                    <span id="active-laser-badge" style="font-size: 10px; background: rgba(59,130,246,0.25); padding: 1px 6px; border-radius: 4px; color: #93c5fd; font-weight: 700;">🔵 450nm Pure Blue</span>
+                    <span id="active-laser-badge" style="font-size: 10px; background: rgba(255,255,255,0.15); padding: 1px 6px; border-radius: 4px; color: #fff; font-weight: 700;">⚪ White (RGB Full)</span>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-                    <button type="button" id="btn-laser-blue" class="primary" style="padding: 5px 8px; font-size: 11px; background: rgba(59,130,246,0.3); border-color: #3b82f6; color: #93c5fd;" onclick="setLaserMode('blue_450nm')">🔵 450nm Blue (Pure)</button>
-                    <button type="button" id="btn-laser-white" class="secondary" style="padding: 5px 8px; font-size: 11px;" onclick="setLaserMode('white')">⚪ White (RGB Full)</button>
+                    <button type="button" id="btn-laser-white" class="primary" style="padding: 5px 8px; font-size: 11px; background: rgba(255,255,255,0.2); border-color: #fff; color: #fff;" onclick="setLaserMode('white')">⚪ White (RGB Full)</button>
+                    <button type="button" id="btn-laser-blue" class="secondary" style="padding: 5px 8px; font-size: 11px;" onclick="setLaserMode('blue_450nm')">🔵 450nm Blue (Pure)</button>
                     <button type="button" id="btn-laser-green" class="secondary" style="padding: 5px 8px; font-size: 11px;" onclick="setLaserMode('green_532nm')">🟢 532nm Green</button>
                     <button type="button" id="btn-laser-red" class="secondary" style="padding: 5px 8px; font-size: 11px;" onclick="setLaserMode('red_638nm')">🔴 638nm Red</button>
                 </div>
@@ -944,7 +944,7 @@ HTML_DASHBOARD = """<!DOCTYPE html>
         }
 
         // Print Laser Wavelength Selector
-        let activeLaserMode = 'blue_450nm';
+        let activeLaserMode = 'white';
         function setLaserMode(mode) {
             activeLaserMode = mode;
             postAPI('/api/projector/laser_mode', {mode: mode});
