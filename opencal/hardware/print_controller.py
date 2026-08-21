@@ -66,7 +66,6 @@ class PrintController:
         self.video_playing.clear()
         
         saved_mp4 = self.hardware.camera.stop_recording()
-        self.hardware.camera.stop_camera()
 
         # ALWAYS auto-save recording to USB drive if mounted
         if saved_mp4 and Path(saved_mp4).exists():

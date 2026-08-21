@@ -195,6 +195,17 @@ class CameraController:
                 self.recording = False
                 self._current_recording_file = None
                 self._current_raw_file = None
+
+                # Seamlessly restore preview mode so Web Console live MJPEG stream continues immediately!
+                try:
+                    preview_config = self.picam.create_preview_configuration(main={"size": (1280, 720)})
+                    self.picam.configure(preview_config)
+                    self.picam.start()
+                    self._apply_controls()
+                    print("✓ Camera preview restored after recording")
+                except Exception as e:
+                    print(f"Warning: Failed to restore preview after recording: {e}")
+
             return saved_file
 
     def is_recording(self) -> bool:
@@ -203,4 +214,7 @@ class CameraController:
     def stop_camera(self):
         if not self.picam:
             return
-        self.picam.stop()
+        try:
+            self.picam.stop()
+        except Exception:
+            pass
