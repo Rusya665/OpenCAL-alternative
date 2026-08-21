@@ -810,6 +810,15 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <button class="secondary" style="background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.4); color: var(--accent-purple);" onclick="postAPI('/api/projector/power/reboot')">🔄 Reboot Projector</button>
             </div>
 
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">PROJECTOR ROTATION & ORIENTATION:</div>
+            <div class="btn-group" style="margin-bottom: 14px; flex-wrap: wrap;">
+                <button type="button" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="postAPI('/api/projector/orientation', {orientation: 'normal'})">0° Normal</button>
+                <button type="button" class="primary" style="padding: 4px 8px; font-size: 11px; background: rgba(6, 182, 212, 0.2); border-color: var(--accent-cyan); color: var(--accent-cyan);" onclick="postAPI('/api/projector/orientation', {orientation: '90'})">🎯 90° CW (Upright)</button>
+                <button type="button" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="postAPI('/api/projector/orientation', {orientation: '180'})">180° Flip</button>
+                <button type="button" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="postAPI('/api/projector/orientation', {orientation: '270'})">270° CCW</button>
+                <button type="button" class="secondary" style="padding: 4px 8px; font-size: 11px;" onclick="postAPI('/api/projector/orientation', {orientation: 'flipped-90'})">🪞 Flipped-90</button>
+            </div>
+
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">TEST VIDEO PLAYBACK:</div>
             <div class="btn-group">
                 <button class="primary" onclick="playExpVideo('oh_hai_mark.mp4')">▶ Play: Oh Hai Mark</button>
@@ -2601,6 +2610,20 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                 })
             except Exception as e:
                 self._send_json({"success": False, "message": f"Failed to reset config: {e}"}, status=500)
+            return
+
+        if parsed.path == "/api/projector/orientation":
+            try:
+                orient = data.get("orientation", "90")
+                env = os.environ.copy()
+                env["WAYLAND_DISPLAY"] = "wayland-0"
+                res = subprocess.run(["wlr-randr", "--output", "HDMI-A-1", "--transform", str(orient)], env=env, capture_output=True, text=True)
+                if res.returncode == 0:
+                    self._send_json({"message": f"Projector display orientation set to {orient}"})
+                else:
+                    self._send_json({"error": res.stderr.strip() or "Failed to rotate display"}, status=500)
+            except Exception as e:
+                self._send_json({"error": str(e)}, status=500)
             return
 
         if parsed.path == "/api/sounds/toggle":
