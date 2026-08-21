@@ -386,7 +386,6 @@ class Projector:
         env["WAYLAND_DISPLAY"] = os.environ.get("WAYLAND_DISPLAY", "wayland-0")
         env["XDG_RUNTIME_DIR"] = os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")
 
-        # Try cvlc with loop
         command = [
             "/usr/bin/cvlc",
             "--fullscreen",
@@ -401,19 +400,20 @@ class Projector:
             threading.Thread(target=self._monitor_playback, args=(self.process,), daemon=True).start()
             print(f"Image displayed: {image_path}")
         except Exception as e:
-            print(f"Warning: Could not display image with cvlc: {e}")
+            print(f"Warning: Could not display image: {e}")
 
     def project_color_patch(
         self,
         color_rgb: tuple[int, int, int] | list[int] = (255, 0, 0),
+        brightness_pct: int = 100,
         width_px: int | None = None,
         height_px: int | None = None,
         offset_y: int | None = None,
         full_screen: bool = False
     ):
         """
-        Projects a solid 100% brightness color rectangle in the center of the projector (matching vial/video size)
-        or fullscreen to test brightness and illumination wavelengths.
+        Projects a solid color rectangle in the center of the projector (matching vial/video size)
+        or fullscreen, scaled by brightness percentage (0-100%).
         """
         # Determine current display orientation
         is_portrait = True
@@ -438,10 +438,14 @@ class Projector:
             canvas_w, canvas_h = 1920, 1080
             default_w, default_h = self.vial_width, 650
 
+        # Scale RGB by brightness percentage (0.0 to 1.0)
+        scale = max(0.0, min(1.0, float(brightness_pct) / 100.0))
+        scaled_rgb = [int(min(255, max(0, c * scale))) for c in color_rgb]
+
         arr = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)
 
         if full_screen:
-            arr[:, :] = color_rgb
+            arr[:, :] = scaled_rgb
         else:
             w = int(width_px) if width_px is not None else default_w
             h = int(height_px) if height_px is not None else default_h
@@ -455,12 +459,12 @@ class Projector:
             y1 = max(0, cy - (h // 2))
             y2 = min(canvas_h, cy + (h // 2))
 
-            arr[y1:y2, x1:x2] = color_rgb
+            arr[y1:y2, x1:x2] = scaled_rgb
 
         img_path = Path("/tmp/projector_color_patch.png")
         Image.fromarray(arr, "RGB").save(img_path)
         self.display_image(img_path)
-        print(f"Projecting color patch {color_rgb} (size: {width_px or default_w}x{height_px or default_h})")
+        print(f"Projecting color patch {scaled_rgb} (brightness: {brightness_pct}%, size: {width_px or default_w}x{height_px or default_h})")
 
     def start_image_thread_for_image(self, image_path: Path):
         """
