@@ -1,6 +1,9 @@
 import os
+import shutil
+import socket
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any, final
 from enum import Enum
@@ -10,6 +13,8 @@ import numpy as np
 from PIL import Image
 
 from opencal.utils.config import ProjectorConfig
+
+MPV_IPC_SOCKET = Path("/tmp/mpv_projector_socket")
 
 
 class ProjectorOrientation(Enum):
@@ -198,11 +203,135 @@ class Projector:
         self.laser_mode = str(mode)
         print(f"Projector print laser mode set to: {self.laser_mode}")
 
+    def is_mpv_available(self) -> bool:
+        """Check if mpv binary is available on system."""
+        return bool(shutil.which("mpv") or Path("/usr/bin/mpv").exists())
+
+    def send_mpv_command(self, cmd: list[Any], timeout: float = 0.5) -> dict | None:
+        """Send JSON IPC command to running mpv instance via Unix domain socket."""
+        if not MPV_IPC_SOCKET.exists() or not hasattr(socket, "AF_UNIX"):
+            return None
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                s.settimeout(timeout)
+                s.connect(str(MPV_IPC_SOCKET))
+                msg = json.dumps({"command": cmd}) + "\n"
+                s.sendall(msg.encode("utf-8"))
+                data = s.recv(4096)
+                if data:
+                    return json.loads(data.decode("utf-8").strip().split("\n")[0])
+        except Exception:
+            pass
+        return None
+
+    def is_player_ready(self) -> bool:
+        """Returns True if the video player process is alive and responsive."""
+        if self.process is None or self.process.poll() is not None:
+            return False
+        if self.is_mpv_available() and MPV_IPC_SOCKET.exists():
+            resp = self.send_mpv_command(["get_property", "pause"])
+            return bool(resp and resp.get("error") == "success")
+        return True
+
+    def unpause_video(self) -> bool:
+        """Unpause pre-loaded video atomically via IPC."""
+        if self.is_mpv_available() and MPV_IPC_SOCKET.exists():
+            resp = self.send_mpv_command(["set_property", "pause", False])
+            print("✓ mpv unpaused via microsecond IPC command")
+            return bool(resp and resp.get("error") == "success")
+        return False
+
+    def prepare_video(self, video_path: Path, laser_mode: str | None = None) -> bool:
+        """
+        Pre-launch video player paused on Frame 0 so the Wayland pipeline is fully initialized.
+        Returns True once IPC socket / player is ready for immediate unpause.
+        """
+        self.play_video(video_path, laser_mode=laser_mode, pause=True)
+        # Wait for IPC socket readiness (up to 2.0s)
+        t_start = time.time()
+        while time.time() - t_start < 2.0:
+            if self.is_player_ready():
+                print(f"✓ Video player ready (pre-loaded on Frame 0 in {time.time() - t_start:.3f}s)")
+                return True
+            time.sleep(0.05)
+        print("Notice: Pre-load timeout, proceeding with playback trigger")
+        return False
+
+    def play_video(self, video_path: Path, laser_mode: str | None = None, pause: bool = False):
+        """Unified video playback entry point. Uses mpv if available for zero-copy seamless loop, else cvlc."""
+        if self.is_mpv_available():
+            self.play_video_with_mpv(video_path, laser_mode=laser_mode, pause=pause)
+        else:
+            self.play_video_with_vlc(video_path, laser_mode=laser_mode)
+
+    def play_video_with_mpv(self, video_path: Path, laser_mode: str | None = None, pause: bool = False):
+        """
+        Play the video using mpv with zero-copy hardware decoding, persistent GPU Wayland surface,
+        and zero-flicker seamless looping (--loop-file=inf).
+        """
+        if self.process:
+            self.stop_video()
+
+        mode = laser_mode if laser_mode is not None else self.get_laser_mode()
+        actual_video_path = get_laser_filtered_video(video_path, mode)
+
+        orig_width, orig_height = self.get_video_dimensions(actual_video_path)
+        scale_factor = self.size / 100
+        new_width = int(orig_width / scale_factor)
+        new_height = int(orig_height / scale_factor)
+
+        # Calculate crop coordinates to keep video centered
+        crop_x = max(0, int((orig_width - new_width) / 2))
+        crop_y = max(0, int((orig_height - new_height) / 2))
+
+        # Cleanup any stale IPC socket
+        if MPV_IPC_SOCKET.exists():
+            try:
+                MPV_IPC_SOCKET.unlink()
+            except Exception:
+                pass
+
+        env = os.environ.copy()
+        env["DISPLAY"] = ":0"
+        env["WAYLAND_DISPLAY"] = os.environ.get("WAYLAND_DISPLAY", "wayland-0")
+        env["XDG_RUNTIME_DIR"] = os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")
+
+        mpv_bin = "/usr/bin/mpv" if Path("/usr/bin/mpv").exists() else "mpv"
+        command = [
+            mpv_bin,
+            "--fullscreen",
+            "--loop-file=inf",
+            "--hwdec=auto-safe",
+            "--vo=gpu",
+            "--keep-open=yes",
+            "--no-osc",
+            "--no-osd-bar",
+            "--no-input-default-bindings",
+            "--idle=no",
+            f"--input-ipc-server={MPV_IPC_SOCKET}",
+            "--pause=yes" if pause else "--pause=no",
+        ]
+
+        if crop_x > 0 or crop_y > 0 or (new_width != orig_width) or (new_height != orig_height):
+            command.append(f"--vf=crop={int(new_width)}:{int(new_height)}:{int(crop_x)}:{int(crop_y)}")
+
+        command.append(str(actual_video_path))
+        print(" ".join(command))
+
+        if self.video_playing:
+            self.video_playing.set()
+        self.process = subprocess.Popen(command, env=env)
+        threading.Thread(target=self._monitor_playback, args=(self.process,), daemon=True).start()
+        print(f"mpv video playback launched with laser mode [{mode}] (paused={pause}).")
+
     def play_video_with_vlc(self, video_path: Path, laser_mode: str | None = None):
         """
         Play the video using cvlc (VLC command-line interface) with the window positioned
         at x=1920 and y=0, and loop the video indefinitely. Automatically applies laser wavelength filtering.
         """
+        if self.process:
+            self.stop_video()
+
         mode = laser_mode if laser_mode is not None else self.get_laser_mode()
         actual_video_path = get_laser_filtered_video(video_path, mode)
 
@@ -380,12 +509,18 @@ class Projector:
 
     def stop_video(self):
         """
-        Stop the video playback by terminating the cvlc process.
+        Stop video playback by quitting mpv via IPC or terminating the player process.
         """
+        if MPV_IPC_SOCKET.exists():
+            try:
+                self.send_mpv_command(["quit"])
+            except Exception:
+                pass
+
         if self.process is not None:
             try:
                 self.process.terminate()
-                _ = self.process.wait(timeout=2.0)
+                _ = self.process.wait(timeout=1.5)
             except Exception:
                 try:
                     self.process.kill()
@@ -393,6 +528,13 @@ class Projector:
                     pass
             self.process = None
             print("Video playback stopped.")
+
+        if MPV_IPC_SOCKET.exists():
+            try:
+                MPV_IPC_SOCKET.unlink()
+            except Exception:
+                pass
+
         if self.video_playing:
             self.video_playing.clear()
 
@@ -404,7 +546,7 @@ class Projector:
             raise ValueError("start_video_thread() requires a `video_path` argument")
 
         # Create a new thread for playing the video.
-        self.thread = threading.Thread(target=self.play_video_with_vlc, args=(video_path,))
+        self.thread = threading.Thread(target=self.play_video, args=(video_path,))
         self.thread.start()
 
     def get_vial_width(self) -> int:

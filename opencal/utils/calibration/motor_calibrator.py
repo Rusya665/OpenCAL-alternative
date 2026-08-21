@@ -240,24 +240,42 @@ class MotorCalibrator:
         gray_gate = cv2.cvtColor(gate_img, cv2.COLOR_BGR2GRAY)
 
         if self.color_filter in ("dark_line", "dark_dot", "black", "black_line"):
-            # Illumination-invariant absorption detection (works in red LED, white LED, or ambient)
+            # Ambient-Invariant Local Otsu + CLAHE absorption detection
+            try:
+                clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+                enhanced_gray = clahe.apply(gray_gate)
+                _, mask_otsu = cv2.threshold(enhanced_gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+            except Exception:
+                _, mask_otsu = cv2.threshold(gray_gate, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+            # Local background absorption ratio
             max_ch = np.max(gate_img, axis=2)
             mean_illum = float(np.mean(max_ch))
-            dark_thresh = min(120, max(30, int(mean_illum * 0.55)))
-            mask = (max_ch < dark_thresh).astype(np.uint8) * 255
+            dark_thresh = min(130, max(25, int(mean_illum * 0.60)))
+            mask_dark = (max_ch < dark_thresh).astype(np.uint8) * 255
+
+            # Combine Otsu and intensity boundary
+            mask = cv2.bitwise_and(mask_otsu, mask_dark)
             k_clean = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 3))
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k_clean)
         elif self.color_filter == "red":
+            # Ambient-Invariant Excess-Red Chromatic Normalization: I_diff = (2R - G - B) / (R + G + B + eps)
+            gate_f = gate_img.astype(np.float32)
+            b_ch, g_ch, r_ch = gate_f[:, :, 0], gate_f[:, :, 1], gate_f[:, :, 2]
+            sum_rgb = r_ch + g_ch + b_ch + 1e-4
+            excess_red = np.maximum(0.0, (2.0 * r_ch - g_ch - b_ch) / sum_rgb)
+            
+            # Scale Excess-Red to 0-255 uint8 and threshold with Otsu
+            norm_red = np.clip(excess_red * 180.0, 0, 255).astype(np.uint8)
+            _, mask_red_otsu = cv2.threshold(norm_red, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+            # Secondary HSV Hue gating
             hsv_gate = cv2.cvtColor(gate_img, cv2.COLOR_BGR2HSV)
-            m1 = cv2.inRange(hsv_gate, np.array([0, 50, 40]), np.array([14, 255, 255]))
-            m2 = cv2.inRange(hsv_gate, np.array([168, 50, 40]), np.array([180, 255, 255]))
+            m1 = cv2.inRange(hsv_gate, np.array([0, 40, 30]), np.array([16, 255, 255]))
+            m2 = cv2.inRange(hsv_gate, np.array([165, 40, 30]), np.array([180, 255, 255]))
             mask_hsv = cv2.bitwise_or(m1, m2)
-            roi_i16 = gate_img.astype(np.int16)
-            b_ch, g_ch, r_ch = roi_i16[:, :, 0], roi_i16[:, :, 1], roi_i16[:, :, 2]
-            diff_rg = r_ch - g_ch
-            diff_rb = r_ch - b_ch
-            mask_rgb = ((diff_rg > 25) & (diff_rb > 20) & (r_ch > 60)).astype(np.uint8) * 255
-            mask = cv2.bitwise_and(mask_hsv, mask_rgb)
+
+            mask = cv2.bitwise_and(mask_red_otsu, mask_hsv)
             k_rect = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 3))
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_rect)
         elif self.color_filter == "green":
@@ -267,7 +285,7 @@ class MotorCalibrator:
             hsv_gate = cv2.cvtColor(gate_img, cv2.COLOR_BGR2HSV)
             mask = cv2.inRange(hsv_gate, np.array([80, 70, 70]), np.array([105, 255, 255]))
         else:  # "bright_dot" / white / fluorescent
-            _, mask = cv2.threshold(gray_gate, 210, 255, cv2.THRESH_BINARY)
+            _, mask = cv2.threshold(gray_gate, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
         # 3. Contour Validation & Centroid Extraction within Optical Gate
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)

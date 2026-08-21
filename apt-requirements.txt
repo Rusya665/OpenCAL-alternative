@@ -13,4 +13,5 @@ i2c-tools
 usbutils              
 v4l-utils
 vlc
+mpv
 wlr-randr

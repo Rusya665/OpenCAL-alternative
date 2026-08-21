@@ -37,11 +37,16 @@ class PrintController:
         self.recording_path = _RECORDING_DIR / f"{video_file.stem}_recording_{ts}.mp4"
         self.recording_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # 1. Pre-load video player paused on Frame 0 so Wayland surface is fully initialized
+        print(f"Pre-loading video on Frame 0: {video_file.name}...")
+        self.hardware.projector.prepare_video(video_file)
+
+        # 2. Atomic Synchronous Trigger: Unpause video, start stepper, turn on LED, start camera
+        print("⚡ Triggering atomic synchronous print start (Light + Stepper + Camera)...")
+        self.video_playing.set()
+        self.hardware.projector.unpause_video()
         self.hardware.stepper.start_rotation("CCW")
         self.hardware.led_manager.set_led((0, 240, 0, 0))
-
-        self.video_playing.set()
-        self.hardware.projector.play_video_with_vlc(video_file)
         self.hardware.camera.start_recording(self.recording_path)
 
         try:
