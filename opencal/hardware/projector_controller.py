@@ -579,16 +579,34 @@ class Projector:
 
     def show_vial_width(self, width: int):
         """
-        Display a rectangle to calibrate the vial width.
+        Display a vertical white bar spanning the full height to calibrate vial width.
         """
         self.set_vial_width(width, persist=False)
-        w, h = 1920, 1080
-        arr = np.zeros((h, w), dtype=np.uint8)
-        cx, cy = w // 2, h // 2
-        dy, dx = self.vial_width // 2, 400
-        arr[cy - dy : cy + dy, cx - dx : cx + dx] = 255
-        im = Image.fromarray(arr, "L")
-        p = Path.cwd() / "opencal/utils/calibration/vial_width.png"
+        is_portrait = True
+        try:
+            res = subprocess.run(
+                ["wlr-randr", "--output", "HDMI-A-1", "--json"],
+                env={"WAYLAND_DISPLAY": "wayland-0", "XDG_RUNTIME_DIR": "/run/user/1000"},
+                capture_output=True, text=True
+            )
+            if res.returncode == 0:
+                data = json.loads(res.stdout)
+                transform = data[0].get("transform", "90")
+                if transform in ("normal", "180", "flipped", "flipped-180"):
+                    is_portrait = False
+        except Exception:
+            pass
+
+        w, h = (1080, 1920) if is_portrait else (1920, 1080)
+        arr = np.zeros((h, w, 3), dtype=np.uint8)
+        cx = w // 2
+        hw = max(1, int(self.vial_width) // 2)
+        x1 = max(0, cx - hw)
+        x2 = min(w, cx + hw)
+        arr[:, x1:x2] = [255, 255, 255]
+
+        im = Image.fromarray(arr, "RGB")
+        p = Path("/tmp/vial_width.png")
         im.save(p)
         self.display_image(p)
 
