@@ -663,6 +663,18 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 </div>
             </div>
 
+            <!-- Print Rotation Direction Selector -->
+            <div style="margin-bottom: 12px; padding: 8px 10px; background: rgba(14,165,233,0.08); border-radius: 8px; border: 1px solid rgba(14,165,233,0.25);">
+                <div style="font-size: 11px; font-weight: 600; color: #7dd3fc; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                    <span>🔄 Print Rotor Direction:</span>
+                    <span id="active-print-dir-badge" style="font-size: 10px; background: rgba(56,189,248,0.2); padding: 1px 6px; border-radius: 4px; color: #38bdf8; font-weight: 700;">CW (Clockwise - Standard Tomo)</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                    <button type="button" id="btn-print-dir-cw" class="primary" style="padding: 5px 8px; font-size: 11px;" onclick="setPrintDirection('CW')">🔄 CW (Standard)</button>
+                    <button type="button" id="btn-print-dir-ccw" class="secondary" style="padding: 5px 8px; font-size: 11px;" onclick="setPrintDirection('CCW')">🔄 CCW (Inverted)</button>
+                </div>
+            </div>
+
             <div class="btn-group">
                 <button class="success" onclick="startSelectedPrint()">▶️ Start Print Job</button>
                 <button class="danger" onclick="stopPrintJob()">🛑 Stop Print</button>
@@ -1158,13 +1170,24 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             fetchPrintFiles();
             showToast('Selected: ' + name);
         }
+        let activePrintDirection = 'CW';
+        function setPrintDirection(dir) {
+            activePrintDirection = dir;
+            const badge = document.getElementById('active-print-dir-badge');
+            const btnCw = document.getElementById('btn-print-dir-cw');
+            const btnCcw = document.getElementById('btn-print-dir-ccw');
+            if (badge) badge.innerText = dir === 'CW' ? 'CW (Clockwise - Standard Tomo)' : 'CCW (Counter-Clockwise)';
+            if (btnCw) btnCw.className = dir === 'CW' ? 'primary' : 'secondary';
+            if (btnCcw) btnCcw.className = dir === 'CCW' ? 'primary' : 'secondary';
+        }
+
         function startSelectedPrint() {
             if (!selectedPrintFile) {
                 showToast('Please select a print file first!');
                 return;
             }
             const rpm = parseFloat(document.getElementById('print-rpm-slider').value);
-            postAPI('/api/prints/start', {file: selectedPrintFile, rpm: rpm});
+            postAPI('/api/prints/start', {file: selectedPrintFile, rpm: rpm, direction: activePrintDirection});
         }
         function stopPrintJob() { postAPI('/api/prints/stop'); }
 
@@ -2463,6 +2486,7 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
             try:
                 filename = data.get("file", "")
                 rpm = float(data.get("rpm", 9.0))
+                direction = str(data.get("direction", "CW"))
                 if self.hardware and self.hardware.stepper:
                     self.hardware.stepper.set_rpm(rpm)
                 
@@ -2474,10 +2498,10 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                         target_path = self.hardware.usb_device.get_full_path(clean_name)
 
                 if self.print_controller and target_path.exists():
-                    self.print_controller.start_print_job(target_path)
-                    self._send_json({"message": f"Started VAM Print: {target_path.name} at {rpm} RPM"})
+                    self.print_controller.start_print_job(target_path, direction=direction)
+                    self._send_json({"message": f"Started VAM Print: {target_path.name} at {rpm} RPM ({direction})"})
                 else:
-                    self._send_json({"message": f"Simulated Print Start: {filename} at {rpm} RPM"})
+                    self._send_json({"message": f"Simulated Print Start: {filename} at {rpm} RPM ({direction})"})
             except Exception as e:
                 self._send_json({"error": str(e)}, status=500)
             return

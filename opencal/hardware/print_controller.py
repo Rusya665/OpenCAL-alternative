@@ -25,27 +25,30 @@ class PrintController:
             else getattr(config.projector, "vial_width_px", 200)
         )
 
-    def start_print_job(self, video_file: Path):
+    def start_print_job(self, video_file: Path, direction: str | None = None):
         """Start the print job in a new thread."""
-        threading.Thread(target=self.print, args=(video_file,)).start()
+        threading.Thread(target=self.print, args=(video_file,), kwargs={"direction": direction}).start()
 
-    def print(self, video_file: Path):
+    def print(self, video_file: Path, direction: str | None = None):
         print(f"Starting print job... {video_file}")
         self.running = True
+
+        rot_dir = direction or getattr(self.hardware.stepper, "default_direction", "CW")
+        print(f"Print motor rotation direction: {rot_dir}")
 
         ts = time.strftime("%Y%m%d_%H%M%S")
         self.recording_path = _RECORDING_DIR / f"{video_file.stem}_recording_{ts}.mp4"
         self.recording_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # 1. Pre-load video player paused on Frame 0 so Wayland surface is fully initialized
-        print(f"Pre-loading video on Frame 0: {video_file.name}...")
+        # 1. Start video player
+        print(f"Starting video: {video_file.name}...")
         self.hardware.projector.prepare_video(video_file)
 
-        # 2. Atomic Synchronous Trigger: Unpause video, start stepper, turn on LED, start camera
-        print("⚡ Triggering atomic synchronous print start (Light + Stepper + Camera)...")
+        # 2. Synchronous Trigger: Unpause video, start stepper in rot_dir, turn on LED, start camera
+        print(f"⚡ Triggering synchronous print start (Light + Stepper {rot_dir} + Camera)...")
         self.video_playing.set()
         self.hardware.projector.unpause_video()
-        self.hardware.stepper.start_rotation("CCW")
+        self.hardware.stepper.start_rotation(rot_dir)
         self.hardware.led_manager.set_led((0, 240, 0, 0))
         self.hardware.camera.start_recording(self.recording_path)
 
