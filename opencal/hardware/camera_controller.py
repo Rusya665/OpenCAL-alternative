@@ -105,7 +105,7 @@ class CameraController:
         self.picam.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": diopters})
 
     def get_frame_array(self) -> np.ndarray | None:
-        """Capture a direct raw numpy image array from memory without file compression overhead."""
+        """Capture a direct raw numpy image array in BGR format for OpenCV and streaming."""
         if not self.picam:
             return None
         with self._cam_lock:
@@ -118,16 +118,23 @@ class CameraController:
                         self._apply_controls()
                     except Exception:
                         pass
-                return self.picam.capture_array()
+                arr = self.picam.capture_array()
+                if arr is not None and len(arr.shape) == 3:
+                    # Picamera2 capture_array returns RGB/RGBA; convert to BGR for OpenCV
+                    if arr.shape[2] == 3:
+                        return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+                    elif arr.shape[2] == 4:
+                        return cv2.cvtColor(arr, cv2.COLOR_RGBA2BGR)
+                return arr
             except Exception:
                 return None
 
     def get_jpeg_frame(self, quality: int = 72) -> bytes | None:
         """Capture an optimized JPEG frame for web streaming (72% quality to minimize network bandwidth)."""
-        arr = self.get_frame_array()
-        if arr is not None:
+        arr_bgr = self.get_frame_array()
+        if arr_bgr is not None:
             try:
-                ret, enc = cv2.imencode(".jpg", arr, [cv2.IMWRITE_JPEG_QUALITY, quality])
+                ret, enc = cv2.imencode(".jpg", arr_bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
                 if ret:
                     return enc.tobytes()
             except Exception:
