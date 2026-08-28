@@ -3,6 +3,8 @@ import threading
 import time
 from typing import final
 from pathlib import Path
+import cv2
+import numpy as np
 
 try:
     from picamera2 import Picamera2, Preview
@@ -102,8 +104,8 @@ class CameraController:
         self._focus_diopters = diopters
         self.picam.set_controls({"AfMode": controls.AfModeEnum.Manual, "LensPosition": diopters})
 
-    def get_jpeg_frame(self) -> bytes | None:
-        """Capture a direct JPEG frame from memory for 30 FPS MJPEG streaming."""
+    def get_frame_array(self) -> np.ndarray | None:
+        """Capture a direct raw numpy image array from memory without file compression overhead."""
         if not self.picam:
             return None
         with self._cam_lock:
@@ -116,6 +118,24 @@ class CameraController:
                         self._apply_controls()
                     except Exception:
                         pass
+                return self.picam.capture_array()
+            except Exception:
+                return None
+
+    def get_jpeg_frame(self, quality: int = 72) -> bytes | None:
+        """Capture an optimized JPEG frame for web streaming (72% quality to minimize network bandwidth)."""
+        arr = self.get_frame_array()
+        if arr is not None:
+            try:
+                ret, enc = cv2.imencode(".jpg", arr, [cv2.IMWRITE_JPEG_QUALITY, quality])
+                if ret:
+                    return enc.tobytes()
+            except Exception:
+                pass
+
+        # Fallback to direct picam capture_file if capture_array is not available
+        with self._cam_lock:
+            try:
                 import io
                 stream = io.BytesIO()
                 self.picam.capture_file(stream, format="jpeg")

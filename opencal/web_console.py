@@ -1939,6 +1939,8 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
     marker_finder: Any | None = None
     _latest_cam_jpg: bytes | None = None
     _latest_cal_jpg: bytes | None = None
+    _cam_frame_id: int = 0
+    _cal_subscribers: int = 0
     _cal_lock: threading.Lock = threading.Lock()
 
     def log_message(self, format, *args):
@@ -2180,27 +2182,31 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/camera/stream":
-            # Real-time 30 FPS MJPEG Stream
+            # Real-time MJPEG Stream with TCP_NODELAY and deduplication
+            try:
+                self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except Exception:
+                pass
             self.send_response(200)
             self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-            self.send_header("Cache-Control", "no-cache, private")
+            self.send_header("Cache-Control", "no-cache, no-store, private, must-revalidate")
             self.send_header("Pragma", "no-cache")
             self.end_headers()
 
+            last_id = -1
             try:
                 while True:
-                    frame = self._latest_cam_jpg
-                    if not frame and self.hardware and self.hardware.camera:
-                        frame = self.hardware.camera.get_jpeg_frame()
-                    if frame:
-                        self.wfile.write(b"--frame\r\n")
-                        self.wfile.write(b"Content-Type: image/jpeg\r\n")
-                        self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode("utf-8"))
-                        self.wfile.write(frame)
-                        self.wfile.write(b"\r\n")
-                        time.sleep(0.033)  # ~30 FPS
-                    else:
-                        time.sleep(0.05)
+                    cur_id = WebConsoleHandler._cam_frame_id
+                    if cur_id != last_id:
+                        frame = WebConsoleHandler._latest_cam_jpg
+                        if frame:
+                            self.wfile.write(b"--frame\r\n")
+                            self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                            self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode("utf-8"))
+                            self.wfile.write(frame)
+                            self.wfile.write(b"\r\n")
+                            last_id = cur_id
+                    time.sleep(0.04)  # ~25 FPS max, zero duplicate frame re-transmissions
             except (BrokenPipeError, ConnectionResetError):
                 pass
             return
@@ -2226,28 +2232,37 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
         # MOTOR CALIBRATION & DEEP TELEMETRY GET ENDPOINTS
         # -------------------------------------------------------------------
         if parsed.path == "/api/calibrate/motor/stream":
+            try:
+                self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except Exception:
+                pass
             self.send_response(200)
             self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-            self.send_header("Cache-Control", "no-cache, private")
+            self.send_header("Cache-Control", "no-cache, no-store, private, must-revalidate")
             self.send_header("Pragma", "no-cache")
             self.end_headers()
 
+            WebConsoleHandler._cal_subscribers += 1
+            last_id = -1
             try:
                 while True:
-                    jpg_bytes = None
-                    with self._cal_lock:
-                        jpg_bytes = self._latest_cal_jpg or self._latest_cam_jpg
-                    if jpg_bytes:
-                        self.wfile.write(b"--frame\r\n")
-                        self.wfile.write(b"Content-Type: image/jpeg\r\n")
-                        self.wfile.write(f"Content-Length: {len(jpg_bytes)}\r\n\r\n".encode("utf-8"))
-                        self.wfile.write(jpg_bytes)
-                        self.wfile.write(b"\r\n")
-                        time.sleep(0.033)  # ~30 FPS
-                    else:
-                        time.sleep(0.05)
+                    cur_id = WebConsoleHandler._cam_frame_id
+                    if cur_id != last_id:
+                        jpg_bytes = None
+                        with WebConsoleHandler._cal_lock:
+                            jpg_bytes = WebConsoleHandler._latest_cal_jpg or WebConsoleHandler._latest_cam_jpg
+                        if jpg_bytes:
+                            self.wfile.write(b"--frame\r\n")
+                            self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                            self.wfile.write(f"Content-Length: {len(jpg_bytes)}\r\n\r\n".encode("utf-8"))
+                            self.wfile.write(jpg_bytes)
+                            self.wfile.write(b"\r\n")
+                            last_id = cur_id
+                    time.sleep(0.04)  # ~25 FPS max
             except (BrokenPipeError, ConnectionResetError):
                 pass
+            finally:
+                WebConsoleHandler._cal_subscribers = max(0, WebConsoleHandler._cal_subscribers - 1)
             return
 
         if parsed.path == "/api/calibrate/motor/status":
@@ -2981,15 +2996,25 @@ def start_web_console_thread(print_controller_or_hardware: Any, host="0.0.0.0", 
         sim_angle = 0.0
         while True:
             try:
+                frame_bgr = None
                 raw_jpg = None
                 if WebConsoleHandler.hardware and WebConsoleHandler.hardware.camera:
-                    raw_jpg = WebConsoleHandler.hardware.camera.get_jpeg_frame()
+                    cam = WebConsoleHandler.hardware.camera
+                    if hasattr(cam, "get_frame_array"):
+                        frame_bgr = cam.get_frame_array()
+                        if frame_bgr is not None:
+                            ret, enc = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 72])
+                            if ret:
+                                raw_jpg = enc.tobytes()
+                    if raw_jpg is None and hasattr(cam, "get_jpeg_frame"):
+                        raw_jpg = cam.get_jpeg_frame(quality=72)
+                        if raw_jpg:
+                            arr = np.frombuffer(raw_jpg, dtype=np.uint8)
+                            frame_bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
-                frame_bgr = None
-                if raw_jpg:
+                if raw_jpg is not None:
                     WebConsoleHandler._latest_cam_jpg = raw_jpg
-                    arr = np.frombuffer(raw_jpg, dtype=np.uint8)
-                    frame_bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                    WebConsoleHandler._cam_frame_id += 1
 
                 if frame_bgr is None:
                     # Simulation fallback when camera is absent
@@ -3028,15 +3053,20 @@ def start_web_console_thread(print_controller_or_hardware: Any, host="0.0.0.0", 
                         else:
                             cv2.circle(frame_bgr, (320, 240), 11, (255, 255, 255), -1)
 
-
-                if WebConsoleHandler.motor_calibrator and frame_bgr is not None:
+                is_cal_needed = (
+                    (WebConsoleHandler.motor_calibrator and WebConsoleHandler.motor_calibrator.is_active)
+                    or (WebConsoleHandler.marker_finder and WebConsoleHandler.marker_finder.is_searching)
+                    or (WebConsoleHandler.stepped_runner and WebConsoleHandler.stepped_runner.is_running)
+                    or WebConsoleHandler._cal_subscribers > 0
+                )
+                if is_cal_needed and WebConsoleHandler.motor_calibrator and frame_bgr is not None:
                     annotated, _ = WebConsoleHandler.motor_calibrator.process_frame(frame_bgr)
-                    ret, enc = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    ret, enc = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 72])
                     if ret:
                         with WebConsoleHandler._cal_lock:
                             WebConsoleHandler._latest_cal_jpg = enc.tobytes()
 
-                time.sleep(0.033)
+                time.sleep(0.04)
             except Exception:
                 time.sleep(0.05)
 
