@@ -196,7 +196,7 @@ class Projector:
 
     def get_laser_mode(self) -> str:
         """Get active print laser wavelength filter mode."""
-        return getattr(self, "laser_mode", "blue_450nm")
+        return getattr(self, "laser_mode", "white")
 
     def set_laser_mode(self, mode: str, persist: bool = True) -> None:
         """Set active print laser wavelength filter mode (blue_450nm, white, green_532nm, red_638nm)."""
@@ -237,32 +237,23 @@ class Projector:
         """Unpause pre-loaded video atomically via IPC."""
         if self.is_mpv_available() and MPV_IPC_SOCKET.exists():
             resp = self.send_mpv_command(["set_property", "pause", False])
-            print("✓ mpv unpaused via microsecond IPC command")
             return bool(resp and resp.get("error") == "success")
-        return False
+        return True
 
     def prepare_video(self, video_path: Path, laser_mode: str | None = None) -> bool:
         """
-        Pre-launch video player paused on Frame 0 so the Wayland pipeline is fully initialized.
-        Returns True once IPC socket / player is ready for immediate unpause.
+        Prepares and starts video player for print job.
         """
-        self.play_video(video_path, laser_mode=laser_mode, pause=True)
-        # Wait for IPC socket readiness (up to 2.0s)
-        t_start = time.time()
-        while time.time() - t_start < 2.0:
-            if self.is_player_ready():
-                print(f"✓ Video player ready (pre-loaded on Frame 0 in {time.time() - t_start:.3f}s)")
-                return True
-            time.sleep(0.05)
-        print("Notice: Pre-load timeout, proceeding with playback trigger")
-        return False
+        self.play_video(video_path, laser_mode=laser_mode)
+        return True
 
     def play_video(self, video_path: Path, laser_mode: str | None = None, pause: bool = False):
-        """Unified video playback entry point. Uses mpv if available for zero-copy seamless loop, else cvlc."""
-        if self.is_mpv_available():
-            self.play_video_with_mpv(video_path, laser_mode=laser_mode, pause=pause)
-        else:
-            self.play_video_with_vlc(video_path, laser_mode=laser_mode)
+        """
+        Unified video playback entry point.
+        Uses cvlc with native Wayland wl_dmabuf which reliably decodes HEVC 1080x1920
+        portrait videos on Raspberry Pi 5 without dmabuf mapping crashes.
+        """
+        self.play_video_with_vlc(video_path, laser_mode=laser_mode)
 
     def play_video_with_mpv(self, video_path: Path, laser_mode: str | None = None, pause: bool = False):
         """
@@ -349,27 +340,29 @@ class Projector:
         env["DISPLAY"] = ":0"
         env["WAYLAND_DISPLAY"] = os.environ.get("WAYLAND_DISPLAY", "wayland-0")
         env["XDG_RUNTIME_DIR"] = os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000")
-
         # VLC command
         command = [
             "/usr/bin/cvlc",
             "--fullscreen",
             "--loop",
             "--no-video-title-show",
-            "--video-filter=croppadd",
-            f"--croppadd-cropleft={int(crop_x)}",
-            f"--croppadd-cropright={int(crop_x)}",
-            f"--croppadd-croptop={int(crop_y)}",
-            f"--croppadd-cropbottom={int(crop_y)}",
-            str(actual_video_path),
         ]
+        if crop_x > 2 or crop_y > 2:
+            command.extend([
+                "--video-filter=croppadd",
+                f"--croppadd-cropleft={int(crop_x)}",
+                f"--croppadd-cropright={int(crop_x)}",
+                f"--croppadd-croptop={int(crop_y)}",
+                f"--croppadd-cropbottom={int(crop_y)}",
+            ])
+        command.append(str(actual_video_path))
         print(" ".join(command))
 
-        if self.video_playing:
+        if hasattr(self, "video_playing") and self.video_playing is not None:
             self.video_playing.set()
         self.process = subprocess.Popen(command, env=env)
         threading.Thread(target=self._monitor_playback, args=(self.process,), daemon=True).start()
-        print(f"Video playback started with laser mode [{mode}].")
+        print(f"cvlc video playback started with laser mode [{mode}]: {actual_video_path}")
 
     def _monitor_playback(self, proc):
         try:
@@ -520,22 +513,26 @@ class Projector:
         if self.process is not None:
             try:
                 self.process.terminate()
-                _ = self.process.wait(timeout=1.5)
+                _ = self.process.wait(timeout=1.0)
             except Exception:
                 try:
                     self.process.kill()
                 except Exception:
                     pass
             self.process = None
-            print("Video playback stopped.")
 
+        # Clean up any rogue mpv or vlc processes
+        try:
+            subprocess.run(["killall", "-9", "mpv"], capture_output=True, timeout=1.0)
+        except Exception:
+            pass
         if MPV_IPC_SOCKET.exists():
             try:
                 MPV_IPC_SOCKET.unlink()
             except Exception:
                 pass
 
-        if self.video_playing:
+        if hasattr(self, "video_playing") and self.video_playing is not None:
             self.video_playing.clear()
 
     def start_video_thread(self, video_path: Path | None = None):
