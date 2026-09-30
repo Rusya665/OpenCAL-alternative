@@ -892,12 +892,19 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                 <button type="button" style="padding: 4px 10px; font-size: 11px;" onclick="projectColor(document.getElementById('proj-custom-color').value)">Project</button>
 
                 <span style="font-size: 11px; color: var(--text-muted); margin-left: 6px;">Size:</span>
-                <select id="proj-color-size" style="padding: 3px 8px; font-size: 11px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 4px;" onchange="updateCurrentColorPatch()">
+                <select id="proj-color-size" style="padding: 3px 8px; font-size: 11px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 4px;" onchange="onColorSizeChange()">
                     <option value="vial" selected>🎯 Vial Center (220px)</option>
                     <option value="column">↕ Column (350px)</option>
                     <option value="wide">⬛ Wide Box (500px)</option>
                     <option value="full">📺 Full Screen Solid</option>
+                    <option value="dot">🔘 Tiny Center Dot</option>
                 </select>
+
+                <div id="dot-size-container" style="display: none; align-items: center; gap: 4px; background: rgba(6,182,212,0.1); padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(6,182,212,0.25);">
+                    <span style="font-size: 11px; color: var(--accent-cyan); font-weight: 600;">Radius:</span>
+                    <input type="range" id="proj-dot-radius" min="1" max="100" value="5" style="width: 75px;" oninput="document.getElementById('proj-dot-radius-val').innerText = this.value + 'px'; updateCurrentColorPatch();">
+                    <span id="proj-dot-radius-val" style="font-size: 11px; color: var(--accent-cyan); font-weight: 700;">5px</span>
+                </div>
 
                 <button type="button" class="danger" style="margin-left: auto; padding: 5px 14px; font-size: 11px; font-weight: 600;" onclick="stopColorPatch()">⏹ Blackout / Stop</button>
             </div>
@@ -937,7 +944,14 @@ HTML_DASHBOARD = """<!DOCTYPE html>
             activePatchColor = hex;
             const bright = parseInt(document.getElementById('proj-brightness-slider') ? document.getElementById('proj-brightness-slider').value : 100) || 100;
             const sizeMode = document.getElementById('proj-color-size') ? document.getElementById('proj-color-size').value : 'vial';
-            postAPI('/api/projector/color', {color: hex, brightness: bright, size: sizeMode});
+            const dotRad = parseInt(document.getElementById('proj-dot-radius') ? document.getElementById('proj-dot-radius').value : 5) || 5;
+            postAPI('/api/projector/color', {color: hex, brightness: bright, size: sizeMode, dot_radius: dotRad});
+        }
+        function onColorSizeChange() {
+            const sizeMode = document.getElementById('proj-color-size').value;
+            const dotCont = document.getElementById('dot-size-container');
+            if (dotCont) dotCont.style.display = (sizeMode === 'dot') ? 'inline-flex' : 'none';
+            updateCurrentColorPatch();
         }
         function updateCurrentColorPatch() {
             if (activePatchColor) {
@@ -2769,6 +2783,7 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                         rgb = [255, 0, 0]
 
                     full_screen = (size_mode == "full")
+                    is_circle = (size_mode == "dot")
                     w = None
                     if size_mode == "vial":
                         w = proj.vial_width
@@ -2776,8 +2791,17 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                         w = 350
                     elif size_mode == "wide":
                         w = 500
+                    elif size_mode == "dot":
+                        dot_rad = int(data.get("dot_radius", 5))
+                        w = dot_rad * 2
 
-                    proj.project_color_patch(color_rgb=rgb, brightness_pct=bright, width_px=w, full_screen=full_screen)
+                    proj.project_color_patch(
+                        color_rgb=rgb,
+                        brightness_pct=bright,
+                        width_px=w,
+                        full_screen=full_screen,
+                        is_circle=is_circle
+                    )
                     self._send_json({"message": f"Projecting {c_val} at {bright}% brightness ({size_mode})!"})
                 else:
                     self._send_json({"error": "Projector not available"}, status=500)

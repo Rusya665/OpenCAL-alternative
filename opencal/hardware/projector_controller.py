@@ -649,11 +649,12 @@ class Projector:
         width_px: int | None = None,
         height_px: int | None = None,
         offset_y: int | None = None,
-        full_screen: bool = False
+        full_screen: bool = False,
+        is_circle: bool = False
     ):
         """
-        Projects a solid color rectangle in the center of the projector (matching vial/video size)
-        or fullscreen, scaled by brightness percentage (0-100%).
+        Projects a solid color rectangle in the center of the projector (matching vial/video size),
+        a center circular dot, or fullscreen, scaled by brightness percentage (0-100%).
         """
         # Determine current display orientation
         is_portrait = True
@@ -686,6 +687,20 @@ class Projector:
 
         if full_screen:
             arr[:, :] = scaled_rgb
+        elif is_circle:
+            off_y = int(offset_y) if offset_y is not None else self.alignment_y_offset
+            cx = canvas_w // 2
+            cy = (canvas_h // 2) + off_y
+            rad = max(1, (int(width_px) if width_px is not None else 10) // 2)
+            from PIL import ImageDraw
+            img = Image.fromarray(arr, "RGB")
+            draw = ImageDraw.Draw(img)
+            draw.ellipse([cx - rad, cy - rad, cx + rad, cy + rad], fill=tuple(scaled_rgb))
+            img_path = Path("/tmp/projector_color_patch.png")
+            img.save(img_path)
+            self.display_image(img_path)
+            print(f"Projecting center dot {scaled_rgb} (radius: {rad}px, brightness: {brightness_pct}%)")
+            return
         else:
             w = int(width_px) if width_px is not None else default_w
             h = int(height_px) if height_px is not None else default_h
