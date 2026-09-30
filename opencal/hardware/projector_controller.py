@@ -650,11 +650,12 @@ class Projector:
         height_px: int | None = None,
         offset_y: int | None = None,
         full_screen: bool = False,
-        is_circle: bool = False
+        is_circle: bool = False,
+        shape: str = "rect"
     ):
         """
-        Projects a solid color rectangle in the center of the projector (matching vial/video size),
-        a center circular dot, or fullscreen, scaled by brightness percentage (0-100%).
+        Projects a solid color rectangle or circle in the center of the projector (matching vial/video size),
+        or fullscreen, scaled by brightness percentage (0-100%).
         """
         # Determine current display orientation
         is_portrait = True
@@ -687,19 +688,22 @@ class Projector:
 
         if full_screen:
             arr[:, :] = scaled_rgb
-        elif is_circle:
+        elif is_circle or shape.lower() == "circle":
             off_y = int(offset_y) if offset_y is not None else self.alignment_y_offset
             cx = canvas_w // 2
             cy = (canvas_h // 2) + off_y
-            rad = max(1, (int(width_px) if width_px is not None else 10) // 2)
+            w = int(width_px) if width_px is not None else 10
+            h = int(height_px) if height_px is not None else w
+            rx = max(1, w // 2)
+            ry = max(1, h // 2)
             from PIL import ImageDraw
             img = Image.fromarray(arr, "RGB")
             draw = ImageDraw.Draw(img)
-            draw.ellipse([cx - rad, cy - rad, cx + rad, cy + rad], fill=tuple(scaled_rgb))
+            draw.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=tuple(scaled_rgb))
             img_path = Path("/tmp/projector_color_patch.png")
             img.save(img_path)
             self.display_image(img_path)
-            print(f"Projecting center dot {scaled_rgb} (radius: {rad}px, brightness: {brightness_pct}%)")
+            print(f"Projecting center circle {scaled_rgb} (size: {w}x{h}px, brightness: {brightness_pct}%)")
             return
         else:
             w = int(width_px) if width_px is not None else default_w

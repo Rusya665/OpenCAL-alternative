@@ -897,13 +897,22 @@ HTML_DASHBOARD = """<!DOCTYPE html>
                     <option value="column">↕ Column (350px)</option>
                     <option value="wide">⬛ Wide Box (500px)</option>
                     <option value="full">📺 Full Screen Solid</option>
-                    <option value="dot">🔘 Tiny Center Dot</option>
+                    <option value="circle">🔘 Center Circle</option>
+                    <option value="rect">⏹️ Center Rectangle</option>
                 </select>
 
-                <div id="dot-size-container" style="display: none; align-items: center; gap: 4px; background: rgba(6,182,212,0.1); padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(6,182,212,0.25);">
-                    <span style="font-size: 11px; color: var(--accent-cyan); font-weight: 600;">Radius:</span>
-                    <input type="range" id="proj-dot-radius" min="1" max="100" value="5" style="width: 75px;" oninput="document.getElementById('proj-dot-radius-val').innerText = this.value + 'px'; updateCurrentColorPatch();">
-                    <span id="proj-dot-radius-val" style="font-size: 11px; color: var(--accent-cyan); font-weight: 700;">5px</span>
+                <div id="dot-size-container" style="display: none; align-items: center; gap: 6px; background: rgba(6,182,212,0.1); padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(6,182,212,0.25); flex-wrap: wrap;">
+                    <span style="font-size: 11px; color: var(--accent-cyan); font-weight: 600;">W:</span>
+                    <input type="range" id="proj-spot-w" min="1" max="500" value="10" style="width: 70px;" oninput="onSpotDimInput('w');">
+                    <span id="proj-spot-w-val" style="font-size: 11px; color: var(--accent-cyan); font-weight: 700;">10px</span>
+
+                    <span style="font-size: 11px; color: var(--accent-cyan); font-weight: 600; margin-left: 4px;">H:</span>
+                    <input type="range" id="proj-spot-h" min="1" max="500" value="10" style="width: 70px;" oninput="onSpotDimInput('h');">
+                    <span id="proj-spot-h-val" style="font-size: 11px; color: var(--accent-cyan); font-weight: 700;">10px</span>
+
+                    <label style="font-size: 10px; color: #cbd5e1; cursor: pointer; display: flex; align-items: center; gap: 2px;">
+                        <input type="checkbox" id="proj-spot-lock" checked onchange="onSpotDimInput('lock');"> 1:1
+                    </label>
                 </div>
 
                 <button type="button" class="danger" style="margin-left: auto; padding: 5px 14px; font-size: 11px; font-weight: 600;" onclick="stopColorPatch()">⏹ Blackout / Stop</button>
@@ -940,17 +949,37 @@ HTML_DASHBOARD = """<!DOCTYPE html>
 
         // Projector Color Patch & Video functions
         let activePatchColor = '#00ff00';
+        function onSpotDimInput(source) {
+            const isLocked = document.getElementById('proj-spot-lock').checked;
+            const wVal = parseInt(document.getElementById('proj-spot-w').value) || 10;
+            const hVal = parseInt(document.getElementById('proj-spot-h').value) || 10;
+            if (isLocked) {
+                if (source === 'w' || source === 'lock') {
+                    document.getElementById('proj-spot-h').value = wVal;
+                    document.getElementById('proj-spot-h-val').innerText = wVal + 'px';
+                } else if (source === 'h') {
+                    document.getElementById('proj-spot-w').value = hVal;
+                    document.getElementById('proj-spot-w-val').innerText = hVal + 'px';
+                }
+            }
+            document.getElementById('proj-spot-w-val').innerText = document.getElementById('proj-spot-w').value + 'px';
+            document.getElementById('proj-spot-h-val').innerText = document.getElementById('proj-spot-h').value + 'px';
+            updateCurrentColorPatch();
+        }
+
         function projectColor(hex) {
             activePatchColor = hex;
             const bright = parseInt(document.getElementById('proj-brightness-slider') ? document.getElementById('proj-brightness-slider').value : 100) || 100;
             const sizeMode = document.getElementById('proj-color-size') ? document.getElementById('proj-color-size').value : 'vial';
-            const dotRad = parseInt(document.getElementById('proj-dot-radius') ? document.getElementById('proj-dot-radius').value : 5) || 5;
-            postAPI('/api/projector/color', {color: hex, brightness: bright, size: sizeMode, dot_radius: dotRad});
+            const spotW = parseInt(document.getElementById('proj-spot-w') ? document.getElementById('proj-spot-w').value : 10) || 10;
+            const spotH = parseInt(document.getElementById('proj-spot-h') ? document.getElementById('proj-spot-h').value : 10) || 10;
+            const shape = (sizeMode === 'circle' || sizeMode === 'dot') ? 'circle' : 'rect';
+            postAPI('/api/projector/color', {color: hex, brightness: bright, size: sizeMode, shape: shape, width: spotW, height: spotH});
         }
         function onColorSizeChange() {
             const sizeMode = document.getElementById('proj-color-size').value;
             const dotCont = document.getElementById('dot-size-container');
-            if (dotCont) dotCont.style.display = (sizeMode === 'dot') ? 'inline-flex' : 'none';
+            if (dotCont) dotCont.style.display = (sizeMode === 'circle' || sizeMode === 'rect' || sizeMode === 'dot') ? 'inline-flex' : 'none';
             updateCurrentColorPatch();
         }
         function updateCurrentColorPatch() {
@@ -2783,26 +2812,33 @@ class WebConsoleHandler(BaseHTTPRequestHandler):
                         rgb = [255, 0, 0]
 
                     full_screen = (size_mode == "full")
-                    is_circle = (size_mode == "dot")
+                    shape = str(data.get("shape", "rect")).lower()
+                    if size_mode in ("dot", "circle"):
+                        shape = "circle"
+                    elif size_mode in ("rect", "square"):
+                        shape = "rect"
+
                     w = None
+                    h = None
                     if size_mode == "vial":
                         w = proj.vial_width
                     elif size_mode == "column":
                         w = 350
                     elif size_mode == "wide":
                         w = 500
-                    elif size_mode == "dot":
-                        dot_rad = int(data.get("dot_radius", 5))
-                        w = dot_rad * 2
+                    elif size_mode in ("dot", "circle", "rect", "square"):
+                        w = int(data.get("width", data.get("dot_radius", 5) * 2))
+                        h = int(data.get("height", w))
 
                     proj.project_color_patch(
                         color_rgb=rgb,
                         brightness_pct=bright,
                         width_px=w,
+                        height_px=h,
                         full_screen=full_screen,
-                        is_circle=is_circle
+                        shape=shape
                     )
-                    self._send_json({"message": f"Projecting {c_val} at {bright}% brightness ({size_mode})!"})
+                    self._send_json({"message": f"Projecting {c_val} at {bright}% brightness ({shape} {w}x{h}px)!"})
                 else:
                     self._send_json({"error": "Projector not available"}, status=500)
             except Exception as e:
