@@ -1,0 +1,8363 @@
+[
+  {
+    "row": 1,
+    "cells": {
+      "A": "Core0428",
+      "B": "JoyceH\n4/13",
+      "C": "Joyce\n0514-1/0618",
+      "D": "",
+      "E": "Function (SEND)",
+      "F": "Function Description",
+      "G": "7/6 Joyce Memo ; 2023/4/13 Joyce memo",
+      "H": "RS232 ASCII code",
+      "I": "HEX Code",
+      "J": "Value Description",
+      "K": "RESPONSE (SUCCESS)",
+      "L": "Fail",
+      "M": "Mode-Standby",
+      "N": "Mode - Normal",
+      "O": "Mode - Digital Signage",
+      "P": "Mode - Broadcast Msg",
+      "S": "REMARK :"
+    }
+  },
+  {
+    "row": 2,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "1",
+      "E": "Power On",
+      "F": "Power On Projector",
+      "G": "",
+      "H": "~XX00 1",
+      "I": "7E 30 30 30 30 20 31 0D",
+      "J": "On",
+      "K": "P",
+      "L": "F",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "* Based on L23 features & D51+ RS232 Ctrl commands(incl. for Disney case), CORE propose this RS232 Ctrl version to Optoma for reference."
+    }
+  },
+  {
+    "row": 3,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "Power Off",
+      "F": "Power Off Projector",
+      "G": "",
+      "H": "~XX00 0/2",
+      "I": "7E 30 30 30 30 20 30 0D",
+      "J": "Off (0/2 for backward compatible)",
+      "K": "P",
+      "L": "F",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 4,
+    "cells": {
+      "B": "",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "2",
+      "E": "AVMute  (9669 limitation)",
+      "F": "Turn on AV Mute",
+      "G": "AV Mute 影音/ ",
+      "H": "~XX02 1",
+      "I": "",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "Additional commnds requestd by EA",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": "",
+      "Z": "",
+      "AA": "",
+      "AB": "",
+      "AC": ""
+    }
+  },
+  {
+    "row": 5,
+    "cells": {
+      "B": "",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "",
+      "E": "AVMute Off  (9669 limitation)",
+      "F": "Turn off AV Mute",
+      "G": "",
+      "H": "~XX02 0/2",
+      "I": "",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "Z": "",
+      "AA": "",
+      "AB": "",
+      "AC": ""
+    }
+  },
+  {
+    "row": 6,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "3",
+      "E": "Mute On",
+      "F": "Turn On Audio Mute",
+      "G": "Audio Mute 聲音",
+      "H": "~XX03 1",
+      "I": "7E 30 30 30 33 20 31 0D",
+      "J": "On",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "1.) * Add a Get commnd similar to ~XX150,  where user can obtain a string of info with one query: Projector Satus, FW verison, Input Source, etc…\n[Calvin 7/8] Projector status 定義在B76~B82欄位 ; FW version 定義在B54  ; Input Source 定義在B47.\n[JoyceH7/8: TBC Calvin get all the three status at one time.]  ;  [Calvin 7/13] 可以達成.\n[Joyce7/15: 會怎麼做= PMC 編一組 at  RS232 command table code for this.]\n[Calvin 7/19] Core 會請Optoma 增加類似B73/command set  Okaa_bbb_cc ;   aa:表示Projector status,  bbb: FW version, cc= Input Source\n[Fiona 9/19] In 9/15 meeting, we reached a conclusion that projector status is power status.\nFor this requirement, please refer to Read part - B31 (Please ask Optoma to provide rs232 command)\n[JoyceH4/19] to Calvin:  在現在的哪一行 ?  119 行 ?\n\n2.)  * Add a Get command for Projector power On or Standby only\n[Calvin 7/8] Projector status 定義在B76~B82欄位 \n[JoyceH7/11: B76~B82欄位如你所說，只會在該事件被觸發後才會自動送出，而且只會發出一次。\n有沒有可能是在 B44 Get projector status (Power on/off) 增加 Standby ? ]\n[Calvin 7/13] 因Power consumption 限制,standby mode 下MT9669無電源,MT9669無法送出RS232 command set.\n[Joyce7/15: 在 Power On 情況之下才能送出 Standby Message, 如B76 (System Message (System Auto Send), MCU+MT9669 main IC, if MCU<0.5w only can be for button function & IR decode for RCU., so IC no function unless Power on for enable main IC.] \nRefer to command ~XX124 1     [JoyceH4/19]  to Calvin:  在現在的哪一行 ? 89 行 ?\n\n3.) * Add Get command for Signal Status: Yes, No  (Unless Get input command already reports signal active?)\n[Calvin 7/8] 7/12前整合回覆\n[Calvin 7/13] 可以達成.\n[Joyce7/15: 會怎麼做= PMC 編一組 at  RS232 command table code for this.]\nRefer to Read command NO.32  (Please ask Optoma to provide rs232 command)\n[JoyceH4/19]  to Calvin:  在現在的哪一行 ? 120 行 ?\n\n4.) * Add Get command for to query Error: Return Info messages.\n[Calvin 7/8] Projector status 定義在B76~B82欄位 (目前只定義Fan Lock & Over Temp & Lightsource Lifetime Out. )\n[JoyceH4/19]  to Calvin:  在現在的哪一行 ?  125~132行 ?\n\n5.) * If there is an internal Player or via USB/SD card - Add a Function command to Auto start from USB/SD/Internal player.\n[Calvin 7/8] 7/12前整合回覆    [Calvin 7/13] 可以達成.(無SD card)\n[Joyce7/15: 確認 Signage Mode 行為 @ OSD 架構/行為 = 7/18 下午討論。]     [JoyceH4/19]  to Calvin:  在現在的哪一行 ?\n  \n6.) * Add Function for Stand By (Low power State)\n[Calvin 7/8] 7/12前整合回覆    [Calvin 7/13] 可以達成.\n[Joyce7/15: 如何達成 ? 7/18 詢問 Calvin。 ]    L23未提供Power mode (Standby)  功能      [JoyceH4/19]  to Calvin: No support ?\n  \n7.) * Add Function on Menu and RS232 command to adjust RGBLaser Wattage from 40% to 100%\n[Calvin 7/8] 7/12前整合回覆\n[Calvin 7/13] 可以達成.先採10%為一個刻度從100%開始遞減.\n[Joyce7/15: 所以意思是可以 100%, 90%, 80%...到 20% (TBC Calvin by Mockup- est. 20%)?   (D51+ : min 40%) ] \n[Calvin 07/19] NA    [JoyceH4/19]  to Calvin:  在現在的哪一行 ?  \n",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 7,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "Mute Off",
+      "F": "Turn Off Audio Mute ",
+      "G": "",
+      "H": "~XX03 0/2",
+      "I": "7E 30 30 30 33 20 30 0D",
+      "J": "Off (0/2 for backward compatible)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 8,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "4",
+      "E": "Source",
+      "F": "Source switch to HDMI",
+      "G": "1.) Source Switch 這項(逐次跳)和其他 Source Switch to \n項目有甚麼不同(Direct Jump)\n2.) USB-A for Reader ? (TBC can be added)\n[Calvin 7/8] 7/12前整合回覆\n[Calvin 7/13] 保留Home,再新增Type-A source 技術可以達成.\n但是實際Home 與Type-A 共用(視為)同一個Source. Core 無需增加.\n[Joyce7/15]: Calvin TBC 如何抓到 USB-A content/ Internal memory.\n[Fiona 7/19]: 此為Input source direct command,無逐次跳的功能",
+      "H": "~XX12 1",
+      "I": "7E 30 30 31 32 20 31 0D",
+      "J": "HDMI (HDMI 1)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "Disable",
+      "P": "Disable",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 9,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "Source switch to Android Home page",
+      "G": "",
+      "H": "~XX12 24",
+      "I": "7E 30 30 31 32 20 32 34 0D",
+      "J": "Home (Smart TV)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "Disable",
+      "P": "Disable",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 10,
+    "cells": {
+      "A": "Done",
+      "B": "to Core請刪除此項",
+      "C": "TBCPMC-0618",
+      "D": "",
+      "E": "",
+      "F": "Source switch to Wi-Fi Display",
+      "G": "",
+      "H": "~XX12 18",
+      "I": "7E 30 30 31 32 20 31 38 0D",
+      "J": "Wireless Display (Network display)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "Disable",
+      "P": "Disable",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 11,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "Source switch to USB Type-C",
+      "G": "",
+      "H": "~XX12 27",
+      "I": "7E 30 30 31 32 20 32 37 0D",
+      "J": "Type-C",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "Disable",
+      "P": "Disable",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 12,
+    "cells": {
+      "A": "TBCPMC-0618",
+      "B": "",
+      "C": "TBCPMC-0618",
+      "D": "",
+      "E": "",
+      "F": "Source switch to Flash drive",
+      "G": "",
+      "H": "~XX12 17",
+      "I": "",
+      "J": "",
+      "K": "",
+      "L": "",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": "",
+      "Y": "",
+      "Z": "",
+      "AA": "",
+      "AB": "",
+      "AC": "",
+      "AD": "",
+      "AE": "",
+      "AF": "",
+      "AG": "",
+      "AH": "",
+      "AI": "",
+      "AJ": "",
+      "AK": "",
+      "AL": "",
+      "AM": ""
+    }
+  },
+  {
+    "row": 13,
+    "cells": {
+      "B": "",
+      "C": "TBCCore-0618",
+      "D": "5",
+      "E": "broadcast message ",
+      "F": "Display Message to OSD menu",
+      "G": "看不懂左邊行為如何作動\n1.) 監控機台連線狀態 : wifi 連線/斷線",
+      "H": "~XX210 n….nnnn",
+      "I": "7E 30 30 32 31 30 20 a 0D\n",
+      "J": "n: 1-30 characters\n",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 14,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "6",
+      "E": "Reset to default",
+      "F": "Process factory reset for customer",
+      "G": "Factory Reset (回到工廠出廠設定值)/ Reset OSD (客人調過的 OSD值清掉) 有甚麼不同。\n但是有些項目不可清除: TBC by Calvin\n[Calvin7/8] 請參考7/7所提供各款OSD reset可以清除的項目 ",
+      "H": "~XX112 1",
+      "I": "7E 30 30 31 31 32 20 31 0D",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 15,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "7",
+      "E": "Reset All Settings (Reset OSD)",
+      "F": "Process Reset OSD for customer",
+      "G": "",
+      "H": "~XX546 1",
+      "I": "7E 30 30 35 34 36 20 31 0D",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 16,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "8",
+      "E": "Language",
+      "F": "Select OSD Language",
+      "G": "可以看到多種語言來選擇嗎 ?",
+      "H": "~XX70 1",
+      "I": "7E 30 30 37 30 20 31 0D",
+      "J": "English",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 17,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX70 2",
+      "I": "7E 30 30 37 30 20 32 0D",
+      "J": "German",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 18,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX70 3",
+      "I": "7E 30 30 37 30 20 33 0D",
+      "J": "French",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 19,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX70 4",
+      "I": "7E 30 30 37 30 20 34 0D",
+      "J": "Italian",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 20,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX70 5",
+      "I": "7E 30 30 37 30 20 35 0D",
+      "J": "Spanish",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 21,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX70 6",
+      "I": "7E 30 30 37 30 20 36 0D",
+      "J": "Portuguese",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 22,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX70 13",
+      "I": "7E 30 30 37 30 20 31 33 0D",
+      "J": "Traditional Chinese",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 23,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX70 14",
+      "I": "7E 30 30 37 30 20 31 34 0D",
+      "J": "Simplified Chinese",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 24,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX70 15",
+      "I": "7E 30 30 37 30 20 31 35 0D",
+      "J": "Japanese",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 25,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX70 16",
+      "I": "7E 30 30 37 30 20 31 36 0D",
+      "J": "Korean",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 26,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX70 17",
+      "I": "7E 30 30 37 30 20 31 37 0D",
+      "J": "Russian",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 27,
+    "cells": {
+      "B": "",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "9",
+      "E": "Freeze  (9669 limitation)",
+      "F": "Set freeze function",
+      "G": "整個畫面 Freeze/unFreeze ? Yes 同時聲音不會聽到",
+      "H": "~XX04 1",
+      "I": "",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 28,
+    "cells": {
+      "B": "",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "10",
+      "E": "Unfreeze (9669 limitation)",
+      "F": "Set unfreeze function",
+      "G": "",
+      "H": "~XX04 0",
+      "I": "",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 29,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "11",
+      "E": "Remote Menu",
+      "F": "Display OSD main menu",
+      "G": "只有遠端操作讓OSD Main menu 顯示出來 ? (TBC)\nbe w/ item 12-16.\n[Calvin7/8] 已將此項目從Item 8 變更為Item 11 \n將相關Remote控制指令集中在一起.(Item 11~16)",
+      "H": "~XX140 20",
+      "I": "7E 30 30 31 34 30 20 32 30 0D",
+      "J": "Menu",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "Disable",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 30,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "12",
+      "E": "Remote Direction Up",
+      "F": "Process Up function in OSD menu",
+      "G": "",
+      "H": "~XX140 10",
+      "I": "7E 30 30 31 34 30 20 31 30 0D",
+      "J": "Up",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "Disable",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 31,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "13",
+      "E": "Remote Direction Left",
+      "F": "Process Left function in OSD menu",
+      "G": "",
+      "H": "~XX140 11",
+      "I": "7E 30 30 31 34 30 20 31 31 0D",
+      "J": "Left",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "Disable",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 32,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "14",
+      "E": "Remote DirectionEnter ",
+      "F": "Process Enter function in OSD menu",
+      "G": "",
+      "H": "~XX140 12",
+      "I": "7E 30 30 31 34 30 20 31 32 0D",
+      "J": "Enter (for projection menu)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "Disable",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 33,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "15",
+      "E": "Remote DirectionRight",
+      "F": "Process Right function in OSD menu",
+      "G": "",
+      "H": "~XX140 13",
+      "I": "7E 30 30 31 34 30 20 31 33 0D",
+      "J": "Right",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "Disable",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 34,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "16",
+      "E": "Remote DirectionDown",
+      "F": "Process Down function in OSD menu",
+      "G": "",
+      "H": "~XX140 14",
+      "I": "7E 30 30 31 34 30 20 31 34 0D",
+      "J": "Down",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "Disable",
+      "S": " "
+    }
+  },
+  {
+    "row": 35,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "17",
+      "E": "Volume -",
+      "F": "Decrease volume",
+      "G": "",
+      "H": "~XX140 17",
+      "I": "7E 30 30 31 34 30 20 31 37 0D",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "S": "",
+      "T": "Mark blue background as dysney requirement",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": ""
+    }
+  },
+  {
+    "row": 36,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "18",
+      "E": "Volume +",
+      "F": "Increase volume",
+      "G": "",
+      "H": "~XX140 18",
+      "I": "7E 30 30 31 34 30 20 31 38 0D",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 37,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "19",
+      "E": "V Keystone +",
+      "F": "Increase V keystone",
+      "G": "1. 沒列到範圍 TBC Calvin\n[Calvin 7/8] Mockup 組立後驗證, 短焦暫定 -10~10度\n2. TBC H keystone ?  (7/E demo ToF)\n[Calvin] NA",
+      "H": "~XX140 15",
+      "I": "7E 30 30 31 34 30 20 31 35 0D",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 38,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "20",
+      "E": "V Keystone -",
+      "F": "Decrease V Keystone",
+      "G": "",
+      "H": "~XX140 16",
+      "I": "7E 30 30 31 34 30 20 31 36 0D",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 39,
+    "cells": {
+      "B": "",
+      "C": "askCore-revised",
+      "D": "21",
+      "E": "Set RGBLaser Wattage \n( Brightness mode )",
+      "F": "Set RGBLaser Power",
+      "G": "1.)這項對應到OSD 的 Light Output- Full (Bright)/Normal (Presentation) /Eco(Battery) ? Yes待確認做兩段或三段 /  應該是 Set RGBLaser Wattage ? \n[Calvin7/8] 已將LED字樣修正為RGBLaser\n2.) 為什麼 was not support under 40% ? TBC- Calvin 暫定 40% for Battery Mode.  \n[Calvin 7/8] 原D51機台低於40%畫面會出現因電流能力不足導致畫面閃爍.Battery mode 需待Mockup及DVT階段驗證.      \n3.) 甚麼是 NVRAM ? NVRAM= MCU 記憶體區塊. 要看MCU size.\n4.) Battery Mode 之前有討論到設一個 ECO mode 可能 30~40% wattage ?",
+      "H": "~XX110 1 ",
+      "I": "7E 30 30 31 31 30 20 31 0D",
+      "J": "Bright (Full)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 40,
+    "cells": {
+      "B": "",
+      "C": "askCore-revised",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX110 3\n~XX110 10",
+      "I": "7E 30 30 31 31 30 20 33 0D\n7E 30 30 31 31 30 20 31 30 0D",
+      "J": "Eco Plus",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 41,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX110 2",
+      "I": "7E 30 30 31 31 30 20 32 0D",
+      "J": "Eco.",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 42,
+    "cells": {
+      "A": "D51專屬, L23無此規格",
+      "B": "Why Gray Out",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "22",
+      "E": "Set Projector Position",
+      "F": "Set Projection mode",
+      "G": "",
+      "H": "~XX71 1  (value 與原D51不同)",
+      "I": "7E 30 30 37 31 20 31 0D",
+      "J": "Front-Desktop",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 43,
+    "cells": {
+      "A": "D51專屬, L23無此規格",
+      "B": "Why Gray Out",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX71 2  (value 與原D51不同)",
+      "I": "7E 30 30 37 31 20 32 0D",
+      "J": "Rear-Desktop",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 44,
+    "cells": {
+      "A": "D51專屬, L23無此規格",
+      "B": "Why Gray Out",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX71 3  (value 與原D51不同)",
+      "I": "7E 30 30 37 31 20 33 0D",
+      "J": "Front-Ceiling/",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 45,
+    "cells": {
+      "A": "D51專屬, L23無此規格",
+      "B": "Why Gray Out",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX71 4  (value 與原D51不同)",
+      "I": "7E 30 30 37 31 20 34 0D",
+      "J": "Rear-Ceiling",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 46,
+    "cells": {
+      "A": "Done",
+      "B": "Different w/ OSD?\n4/19 TBC by Eric",
+      "C": "TBCw/Regions \n0618",
+      "D": "22",
+      "E": "Projection Orientation",
+      "F": "Projection Orientation - Desktop",
+      "G": "",
+      "H": "~XX523 0",
+      "I": "7E 30 30 35 32 33 20 30 0D",
+      "J": "Off",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": "",
+      "Z": "",
+      "AA": "",
+      "AB": "",
+      "AC": ""
+    }
+  },
+  {
+    "row": 47,
+    "cells": {
+      "A": "Done",
+      "B": "Different w/ OSD?\n4/20 TBC by Eric",
+      "C": "TBCw/Regions \n0618",
+      "D": "",
+      "E": "",
+      "F": "Projection Orientation - Ceiling Mount",
+      "G": "",
+      "H": "~XX523 1",
+      "I": "7E 30 30 35 32 33 20 31 0D",
+      "J": "On",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": "",
+      "Z": "",
+      "AA": "",
+      "AB": "",
+      "AC": ""
+    }
+  },
+  {
+    "row": 48,
+    "cells": {
+      "A": "Done",
+      "B": "Different w/ OSD?\n4/21 TBC by Eric",
+      "C": "TBCw/Regions \n0618",
+      "D": "",
+      "E": "",
+      "F": "Projection Orientation- Auto",
+      "G": "",
+      "H": "~XX523 3",
+      "I": "7E 30 30 35 32 33 20 33 0D",
+      "J": "Auto",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": "",
+      "Z": "",
+      "AA": "",
+      "AB": "",
+      "AC": ""
+    }
+  },
+  {
+    "row": 49,
+    "cells": {
+      "A": "Done",
+      "B": "Different w/ OSD?\n4/22 TBC by Eric",
+      "C": "TBCw/Regions \n0618",
+      "D": "",
+      "E": "Projection Location",
+      "F": "Projection Location - Front",
+      "G": "",
+      "H": "~XX524 0",
+      "I": "7E 30 30 35 32 34 20 30 0D",
+      "J": "Off",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": "",
+      "Z": "",
+      "AA": "",
+      "AB": "",
+      "AC": ""
+    }
+  },
+  {
+    "row": 50,
+    "cells": {
+      "A": "Done",
+      "B": "Different w/ OSD?\n4/23 TBC by Eric",
+      "C": "TBCw/Regions \n0618",
+      "D": "",
+      "E": "",
+      "F": "Projection Location - Rear",
+      "G": "",
+      "H": "~XX524 1",
+      "I": "7E 30 30 35 32 34 20 31 0D",
+      "J": "On",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": "",
+      "Z": "",
+      "AA": "",
+      "AB": "",
+      "AC": ""
+    }
+  },
+  {
+    "row": 51,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "23",
+      "E": "Set Display Mode",
+      "F": "Set Display mode",
+      "G": "7/7 TBC Display Mode 數量，基於 Disney case 等考量適當的 Display Mode. TBC-Calvin for L23 Display Mode .\n[Calvin7/8] 共計支援七款Display mode, 需刪除3D mode\n[Joyce7/8: TBC-HDR10+]",
+      "H": "~XX20 41",
+      "I": "7E 30 30 32 30 20 34 31 3D",
+      "J": "AI-PQ",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 52,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX20 2",
+      "I": "7E 30 30 32 30 20 32 0D",
+      "J": "Bright",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 53,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX20 16",
+      "I": "7E 30 30 32 30 20 31 36 0D",
+      "J": "Vivid",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 54,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX20 3",
+      "I": "7E 30 30 32 30 20 33 0D",
+      "J": "Cinema",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 55,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX20 42",
+      "I": "7E 30 30 32 30 20 34 32 3D",
+      "J": "WCG",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 56,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX20 21",
+      "I": "7E 30 30 32 30 20 32 31 0D",
+      "J": "HDR",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 57,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX20 25",
+      "I": "7E 30 30 32 30 20 32 35 0D",
+      "J": "HLG",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 58,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX20 43",
+      "I": "7E 30 30 32 30 20 34 33 3D",
+      "J": "HDR10+",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 59,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX20 12",
+      "I": "7E 30 30 32 30 20 31 32 0D",
+      "J": "Game",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 60,
+    "cells": {
+      "B": "",
+      "C": "L23 REMOVED",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX20 1",
+      "I": "7E 30 30 32 30 20 35 0D\n7E 30 30 32 30 20 31 0D",
+      "J": "Presentation",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 61,
+    "cells": {
+      "B": "",
+      "C": "OK-0621",
+      "D": "24",
+      "E": "Set Brightness",
+      "F": "Set Brightness value",
+      "G": "右邊F 行描述的行為是 ? ",
+      "H": "~XX21 n",
+      "I": "7E 30 30 32 31 20 a 0D",
+      "J": "n = -50 (a=2D 35 30) ~ 50 (a=35 30)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 62,
+    "cells": {
+      "B": "",
+      "C": "OK-0621",
+      "D": "25",
+      "E": "Set Contrast",
+      "F": "Set Contrast value",
+      "G": "右邊F 行描述的行為是 ? ",
+      "H": "~XX22 n",
+      "I": "7E 30 30 32 32 20 a 0D",
+      "J": "n = -50 (a=2D 35 30) ~ 50 (a=35 30)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 63,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "26",
+      "E": "Set Color Temperature",
+      "F": "Set color temperature",
+      "G": "Optoma 機種Color Temp 不只有 3組，至少有\nWarm / Standard / Cool / Cold。TBC Calvin by Mock Up\n[Calvin 7/8] 原廠Generic OSD 規格僅設計三組色溫值.\n[Joyce7/11]: need 4 color temp setting on MT9669, MT9669 will be for L23 & P3.\n",
+      "H": "~XX36 1",
+      "I": "7E 30 30 33 36 20 31 0D",
+      "J": "Standard(D65)\n",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 64,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX36 2",
+      "I": "7E 30 30 33 36 20 32 0D",
+      "J": "Cool(D75)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 65,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX36 3",
+      "I": "7E 30 30 33 36 20 33 0D ",
+      "J": "Cold(D83)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 66,
+    "cells": {
+      "B": "",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "27",
+      "E": "Set Digital Zoom I\n (the items are same as OSD menu)\n (Generic無此功能)",
+      "F": "Set digital zoom",
+      "G": "1.) 右邊F 行描述的行為是 ? \n2.) OSD menu 裡面沒有這項。TBC Calvin with 芯智- 7/E\n[Calvin 7/8] 確認MT9669 不支援Digiral Zoom\n[JoyceH7/8: TBC-Calvin JMGO O1]\n[Calvin 7/13] Core 購買機台已被拆解,無法實機確認\n[Joyce7/15: CORE check 網路上競品規格]\n[Calvin 7/19] \n提供JMGO O1/Digital Zoom 影片,僅支援Zoom out,不支援Zoom in. OSD 會隨背景連動縮放,無法達成Zoom out 調整下,OSD 固定大小.",
+      "H": "~XX62 n",
+      "I": "",
+      "J": "n = -5 (a=2D 35) ~ 25 (a=32 35)\n",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 67,
+    "cells": {
+      "B": "",
+      "C": "TBCCore\n0618\n-> 0~50 or \n-50~100 (TBC)",
+      "D": "28",
+      "E": "Set Digital Zoom\n(can be fine-tune the saling factor by 1%)",
+      "F": "For supporting digital zoom out",
+      "G": "1.) 看不懂B行描述\n2.) OSD menu 裡面沒有這項。TBC Calvin with 芯智- 7/E\n[Calvin 7/8]  確認MT9669 不支援Digiral Zoom\n[JoyceH7/8: TBC-Calvin JMGO O1]\n[Calvin 7/13] Core 購買機台已被拆解,無法實機確認\n[Joyce7/15: CORE check 網路上競品規格]\n[Calvin 7/19] 提供JMGO O1/Digital Zoom 影片,僅支援Zoom out,不支援Zoom in. OSD 會隨背景連動縮放,無法達成Zoom out 調整下,OSD 固定大小.\n",
+      "H": "~XX62 n\n",
+      "I": "7E 30 30 36 32 20 a 0D",
+      "J": "n =  100 0 (a=31 30 30) ~ 50 -50 (a=35 30) ",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 68,
+    "cells": {
+      "B": "",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "29",
+      "E": "Set CCA (*3) Color Setting x,y and gain Items  (Generic無此功能)",
+      "F": "Combine item 29 and 30 to set CCA, Set option from item 29 then setting value from item 30",
+      "G": "這兩項有甚麼不同 ?\n1.) CCA 是 TI東西 for 光學校正 for Color Setting Color Gain，例如設定顏色 Gain/ Value。For 遠端調整顏色相關等數值。\n2.) L23 OK w/ this, All TI IC support CCA.",
+      "H": "~XX156 na",
+      "I": "",
+      "J": "n= 01h (X)\nn=02h (Y)\nn=03h (Gain)\na=01h (Red)\na=02h (Green)\na=03h (Blue)\na=04h (Cyan)\na=05h (Magenta)\na=06h (Yellow)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 69,
+    "cells": {
+      "B": "",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "30",
+      "E": "Set CCA (*3) Color Setting x,y and gain Values  (This items was not saved in NVRAM) (Generic無此功能)",
+      "F": "Combine item 29 and 30 to set CCA, Set option from item 29 then setting value from item 30",
+      "G": "",
+      "H": "~XX157 na",
+      "I": "",
+      "J": "n= It's the low byte of the data which is transferred from the CCA color point. \nExample: The data is 0x1234, so this byte is 0x34. \na= It's the high byte of the data which is transferred from the CCA color point.transfer.\nExample: The data is 0x1234, so this byte is 0x12. ",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 70,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "31",
+      "E": "Set Auto Keystone Disable",
+      "F": "Open or close auto keystone function.",
+      "G": "依據F行，只有On/Off ? Yes.\nTBC Calvin 7/E demo for Auto HV keystone[Calvin 7/8] NA",
+      "H": "~XX69 0",
+      "I": "7E 30 30 36 39 20 30 0D",
+      "J": "Off",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 71,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "Set Auto Keystone Enable",
+      "F": "",
+      "G": "",
+      "H": "~XX69 1",
+      "I": "7E 30 30 36 39 20 31 0D",
+      "J": "On",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 72,
+    "cells": {
+      "A": "Core 核對大表後, 05/05 回覆.",
+      "B": "why H欄",
+      "C": "OK-0618",
+      "D": "32",
+      "E": "Set Aspect Ratio",
+      "F": "Set Aspect ratio function",
+      "G": "",
+      "H": "~XX60 7",
+      "I": "7E 30 30 36 30 20 37 0D",
+      "J": "Auto ",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 73,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX60 1",
+      "I": "7E 30 30 36 30 20 31 0D",
+      "J": "4:3",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 74,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX60 2",
+      "I": "7E 30 30 36 30 20 32 0D",
+      "J": "16:9",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 75,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX60 3",
+      "I": "7E 30 30 36 30 20 33 0D",
+      "J": "16:10",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 76,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX60 6",
+      "I": "7E 30 30 36 30 20 36 0D",
+      "J": "Native",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 77,
+    "cells": {
+      "A": "Done",
+      "B": "New? For what?",
+      "C": "TBCCore-0618",
+      "D": "33",
+      "E": "CMS (For Video) ",
+      "F": "set R/G/B/C/Y/M",
+      "G": "",
+      "H": "~XX212 1",
+      "I": "7E 30 30 32 31 32 20 31 0D",
+      "J": "Red",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 78,
+    "cells": {
+      "A": "Done",
+      "B": "New? For what?",
+      "C": "TBCCore-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX212 2",
+      "I": "7E 30 30 32 31 32 20 32 0D",
+      "J": "Green",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 79,
+    "cells": {
+      "A": "Done",
+      "B": "New? For what?",
+      "C": "TBCCore-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX212 3",
+      "I": "7E 30 30 32 31 32 20 33 0D",
+      "J": "Blue",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 80,
+    "cells": {
+      "A": "Done",
+      "B": "New? For what?",
+      "C": "TBCCore-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX212 4",
+      "I": "7E 30 30 32 31 32 20 34 0D",
+      "J": "Cyan",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 81,
+    "cells": {
+      "A": "Done",
+      "B": "New? For what?",
+      "C": "TBCCore-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX212 5",
+      "I": "7E 30 30 32 31 32 20 35 0D",
+      "J": "Yellow",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 82,
+    "cells": {
+      "A": "Done",
+      "B": "New? For what?",
+      "C": "TBCCore-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX212 6",
+      "I": "7E 30 30 32 31 32 20 36 0D",
+      "J": "Magenta",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 83,
+    "cells": {
+      "A": "Done",
+      "B": "New? For what?",
+      "C": "TBCCore-0618",
+      "D": "34",
+      "E": "CMS (For Video) - Set Hue",
+      "F": "Set Hue",
+      "G": "",
+      "H": "~XX249 n ",
+      "I": "7E 30 30 32 34 37 20 a 0D",
+      "J": "n = -50 (a=2D 35 30) ~ 50 (a=35 30)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 84,
+    "cells": {
+      "A": "Done",
+      "B": "New? For what?",
+      "C": "TBCCore-0618",
+      "D": "35",
+      "E": "CMS (For Video) - Set  Gain",
+      "F": "Set Gain",
+      "G": "",
+      "H": "~XX248 n ",
+      "I": "7E 58 58 32 34 38 20 a 0D",
+      "J": "n = -50 (a=2D 35 30) ~ 50 (a=35 30)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 85,
+    "cells": {
+      "A": "Done",
+      "B": "New? For what?",
+      "C": "TBCCore-0618",
+      "D": "36",
+      "E": "Backlight (Video Mute)",
+      "F": "Set Light source power\n(Screen off)",
+      "G": "",
+      "H": "~XX13 1",
+      "I": "7E 30 30 31 33 20 31 0D",
+      "J": "(Video Mute) On",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 86,
+    "cells": {
+      "A": "Done",
+      "B": "New? For what?",
+      "C": "TBCCore-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~XX13 0",
+      "I": "7E 30 30 31 33 20 30 0D",
+      "J": "(Video Mute) Off",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 87,
+    "cells": {
+      "B": "",
+      "C": "NewOK-0618",
+      "D": "37",
+      "E": "Set Digital Signage",
+      "F": "Set Digital Signage Enable",
+      "G": "",
+      "H": "~xx569 1",
+      "I": "7E 30 30 35 36 39 20 31 0D",
+      "J": "Off",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 88,
+    "cells": {
+      "B": "",
+      "C": "NewOK-0618",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "~xx569 2",
+      "I": "7E 30 30 35 36 39 20 32 0D",
+      "J": "On",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 89,
+    "cells": {
+      "B": "",
+      "C": "TBCCore-0618",
+      "D": "38",
+      "E": "Set H Keystone",
+      "F": "Set H Keystone Value",
+      "G": "",
+      "H": "~xx65 n",
+      "I": "7E 30 30 36 35 20 a 0D",
+      "J": "n = -40 (a=2D 34 30) ~ 40 (a=34 30)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 90,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "39",
+      "E": "Set H Keystone +",
+      "F": "Increase H keystone Value",
+      "G": "",
+      "H": "~xx140 68",
+      "I": "7E 30 30 31 34 30 20 36 38 0D",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 91,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "40",
+      "E": "Set H Keystone -",
+      "F": "Decrease H Keystone Value",
+      "G": "",
+      "H": "~xx140 69",
+      "I": "7E 30 30 31 34 30 20 36 39 0D",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 92,
+    "cells": {
+      "B": "",
+      "C": "TBCCore-0618",
+      "D": "41",
+      "E": "Set Rotation +",
+      "F": "Increase Rotation Value",
+      "G": "",
+      "H": "~xx140 83",
+      "I": "7E 30 30 31 34 30 20 38 33 0D",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 93,
+    "cells": {
+      "B": "",
+      "C": "TBCCore-0618",
+      "D": "42",
+      "E": "Set Rotation -",
+      "F": "Decrease Rotation Value",
+      "G": "",
+      "H": "~xx140 84",
+      "I": "7E 30 30 31 34 30 20 38 34 0D",
+      "J": "",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 94,
+    "cells": {
+      "B": "",
+      "C": "askCore add-0618",
+      "D": "43",
+      "E": "Set V Keystone ",
+      "F": "Set V Keystone Value",
+      "G": "",
+      "H": "~xx66 n",
+      "I": "7E 30 30 36 36 20 a 0D",
+      "J": "n = -40 (a=2D 34 30) ~ 40 (a=34 30)",
+      "K": "P",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 95,
+    "cells": {
+      "C": "",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "",
+      "I": "",
+      "J": "",
+      "K": "",
+      "L": "",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 96,
+    "cells": {
+      "B": "",
+      "C": "Joyce\n0618",
+      "D": "",
+      "E": "Function (READ)",
+      "F": "",
+      "G": "",
+      "H": "RS232- telnet(23)",
+      "I": "",
+      "J": "",
+      "K": "RESPONSE (SUCCESS)",
+      "L": "Fail",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 97,
+    "cells": {
+      "A": "(04/13)\nDone",
+      "B": "to Core : for this ?  \nInformation 2: * Add a Get command for Projector power On or Standby only",
+      "C": "OK-0618",
+      "D": "1",
+      "E": "check power state",
+      "F": "Get projector status (Power on/off)",
+      "G": "是要知道機台是正在開機或關機狀態 ? Yes",
+      "H": "~XX124 1",
+      "I": "7E 30 30 31 32 34 20 31 0D",
+      "J": "",
+      "K": "Ok0 off\nOk1 on",
+      "L": "F",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 98,
+    "cells": {
+      "A": "(04/13)\nDone",
+      "B": "why? NO Support.",
+      "C": "TBCCore-0618",
+      "D": "2",
+      "E": "get avmute state",
+      "F": "Get AV mute status",
+      "G": "",
+      "H": "~XX355 1",
+      "I": "",
+      "J": "",
+      "K": "Ok0 off\nOk1 on",
+      "L": "F",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 99,
+    "cells": {
+      "B": "",
+      "C": "OK-0621",
+      "D": "3",
+      "E": "get mute state",
+      "F": "Get Mute Status",
+      "G": "",
+      "H": "~XX356 1",
+      "I": "7E 30 30 33 35 36 20 31 0D",
+      "J": "",
+      "K": "Ok0 off\nOk1 on",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 100,
+    "cells": {
+      "A": "Region Confirm.",
+      "B": "how about USBA?\n4/19 Eric said under developing.\n\nOka\na = 7 HDMI1\na = 13 Wireless Display (Network display)\na = 23 USB Type- C\na = 20 Home (Smart TV)",
+      "C": "TBCRegions-0618",
+      "D": "4",
+      "E": "get input source",
+      "F": "Get current input source settings",
+      "G": "1.) L23 Input I/O沒那麼多\n2.) 作動方式 ?",
+      "H": "~XX121 1",
+      "I": "7E 30 30 31 32 31 20 31 0D",
+      "J": "",
+      "K": "Oka\na = 7 HDMI1\na = 13 Wireless Display (Network display)\na = 23 USB Type- C\na = 20 Home (Smart TV)",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 101,
+    "cells": {
+      "B": "",
+      "C": "TBCPMC-0618",
+      "D": "5",
+      "E": "get lightsource hour",
+      "F": "Get light source hours of usage",
+      "G": "",
+      "H": "~XX108 1  ",
+      "I": "7E 30 30 31 30 38 20 31 0D",
+      "J": "(5 digits) Total Lamp Hours",
+      "K": "Oknnnnn",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 102,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "6",
+      "E": "get system temperature",
+      "F": "get system temperature",
+      "G": "Oka, a = 換算數值for Temp",
+      "H": "~XX352 1",
+      "I": "7E 30 30 33 35 32 20 31 0D",
+      "J": "aaa=000~999",
+      "K": "Okaaa",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 103,
+    "cells": {
+      "B": "",
+      "C": "askCore revised\n0618",
+      "D": "7",
+      "E": "software version (DDP)",
+      "F": "Get software version.",
+      "G": "主要 show DDP S/W version",
+      "H": "~XX122 1",
+      "I": "7E 30 30 31 32 32 20 31 0D",
+      "J": "dddd = DDP Software Version",
+      "K": "Okdddd",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 104,
+    "cells": {
+      "B": "",
+      "C": "TBCCore-0618",
+      "D": "8",
+      "E": "GetMacAddress",
+      "F": "Get Network MAC address",
+      "G": "One set Mac Address (L23 M/B Mac Address) TBC-Calvin\n[Calvin 7/8] Wi-Fi 無線與有線有各自的MAC Address. 投影機僅\n顯示有線的MAC address.WiFi 無線MAC Address顯示在無線WiFi模組內",
+      "H": "~XX555 2",
+      "I": "7E 30 30 35 35 35 20 32 0D",
+      "J": "##:##:##:##:##:## : mac address",
+      "K": "Ok##:##:##:##:##:##",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": "",
+      "Q": "",
+      "R": ""
+    }
+  },
+  {
+    "row": 105,
+    "cells": {
+      "B": "",
+      "C": "TBCCore-0618",
+      "D": "9",
+      "E": "Get Network Status",
+      "F": "Get WiFi connect status",
+      "G": "Ask regions: Will toB users scenerio need wifi dongle during Ctrl application ?",
+      "H": "~XX451 1",
+      "I": "7E 30 30 34 35 31 20 31 0D",
+      "J": "",
+      "K": "Ok0 Disconnected\nOk1 Connected",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 106,
+    "cells": {
+      "B": "",
+      "C": "TBCCore-0618",
+      "D": "10",
+      "E": "Get IP Address",
+      "F": "Get Network IP address",
+      "G": "",
+      "H": "~XX451 2",
+      "I": "7E 30 30 34 35 31 20 32 0D",
+      "J": "",
+      "K": "Okaaa_bbb_ccc_ddd",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 107,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "11",
+      "E": "Device ID",
+      "F": "Projector ID",
+      "G": "",
+      "H": "~XX558 1",
+      "I": "7E 30 30 35 35 38 20 31 0D",
+      "J": "a=00~99",
+      "K": "Okaa\n(follow OSD setting)",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 108,
+    "cells": {
+      "B": "",
+      "C": "askCore revised\n0618",
+      "D": "12",
+      "E": "Android version Get Software Version",
+      "F": "Get android FWSoftware version",
+      "G": "TBC Calvin\n基本上 Android version 可show Android ver/ DDP ver\n[Calvin 7/8] 可以顯示Android 及DDP軟體版本",
+      "H": "~XX122 1",
+      "I": "7E 30 30 31 32 32 20 31 0D",
+      "J": "aaa = Android Software Version\nPrefix & Length depends on model\n dddd = For old model or All in One model\nFor 2023 new model,\nAaa=DDP ver.,Mbb=MCU ver.,Lcc=LAN Ver., Hdd=HDBaseT ver., See=Android ver., Ree=RK ver., Xff=Other IC ver. ",
+      "K": "OkAaaMbbLccHddSeeXff\nAaa=DDP ver.\nMbb=MCU ver.\nLcc=LAN Ver.\nHdd=HDBaseT ver.\nSee=Android ver.\nRee=RK ver.\nXff=Other IC ver. ",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 109,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "13",
+      "E": "Get System Hours\n(Projection Hour)",
+      "F": "Get system hours of usage",
+      "G": "Remove Lamp- TBC Calvin\n[Calvin 7/8] 已修改完畢",
+      "H": "~XX150 21 ",
+      "I": "7E 30 30 31 35 30 20 32 31 0D",
+      "J": "aaaaa=00000~99999",
+      "K": "Okaaaaa",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 110,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "14",
+      "E": "Get Fan1 status",
+      "F": "Get Fan 1 speed",
+      "G": "L23 only one Fan",
+      "H": "~XX351 0",
+      "I": "7E 30 30 33 35 31 20 30 0D",
+      "J": "aaaa=0000~9999(RPM)",
+      "K": "Okaaaa",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 111,
+    "cells": {
+      "B": "",
+      "C": "L23 w/o",
+      "D": "15",
+      "E": "Get Fan2 status",
+      "F": "Get Fan 2 speed",
+      "G": "",
+      "H": "~XX351 1",
+      "I": "",
+      "J": "",
+      "K": "Okaaaa\naaa=000~999(RPM)",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 112,
+    "cells": {
+      "B": "",
+      "C": "L23 w/o",
+      "D": "16",
+      "E": "Get Fan3 status",
+      "F": "Get Fan 3 speed",
+      "G": "",
+      "H": "~XX351 2",
+      "I": "",
+      "J": "",
+      "K": "Okaaaa\naaa=000~999(RPM)",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 113,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "17",
+      "E": "Get  RGBLaser Wattage \n( Brightness mode )",
+      "F": "Get RBGLaser power settings",
+      "G": "TBC Calvin - Revised to RGBLaser\n[Calvin 7/8] 已修改完畢",
+      "H": "~XX241 1\n\n\n",
+      "I": "7E 30 30 32 34 31 20 31 0D",
+      "J": "a=1 Bright\na=2 Eco.\na=3 Eco Plus\n",
+      "K": "Oka\n",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 114,
+    "cells": {
+      "A": "(04/13)\nDone",
+      "B": "TBC Core? 名稱和 OSD tab不符 & Write 沒有這項\nGet 有這項，原因 ?",
+      "C": "TBCRegions\n-0618",
+      "D": "18",
+      "E": "Projection Location",
+      "F": "Get projection settings",
+      "G": "",
+      "H": "~XX129 1",
+      "I": "7E 30 30 31 32 39 20 31 0D",
+      "J": "a=0 Front-Desktop\na=1 Rear-Desktop \na=2 Front-Ceiling/\na=3 Rear-Ceiling",
+      "K": "Oka",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 115,
+    "cells": {
+      "A": "(04/13)\nDone",
+      "B": "C欄: 'Display Mode' 應該是改為'Picture Mode'.\nH欄:各Picture Modes有新名稱要調整正確",
+      "C": "asKCore revised-0618",
+      "D": "19",
+      "E": "Get Picture Mode",
+      "F": "Get display mode settings",
+      "G": "",
+      "H": "~XX123 1",
+      "I": "7E 30 30 31 32 33 20 31 0D",
+      "J": "a = 1 Presentation\na = 2 Bright\na = 3 Cinema \na = 5 User(1)\na = 12 Game\na = 14 Vivid  (TV)\na= 21 HDR\na=25 HLG\na=35 41 AI-PQ \na=42 WCG\na=36 D.Cinema \na=37HDR10+",
+      "K": "Oka",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 116,
+    "cells": {
+      "A": "Done",
+      "B": "TBC V. Keystone value range  -30~30 ?\n\nH. Keystone也要加入吧 ..",
+      "C": "asKCore-0618",
+      "D": "20",
+      "E": "Get V. Keystone value",
+      "F": "Get keystone settings",
+      "G": "TBC Calvin- V or H keystone etc.\n[Calvin 7/8] Mockup 組立後驗證, 短焦暫定 -10~10度\n[JoyceH7/8: TBC Calvin degree range]",
+      "H": "~XX543 3",
+      "I": "7E 30 30 35 34 33 20 33 0D",
+      "J": "a=%",
+      "K": "Oka\nrange -30~30 -40~40",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 117,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "21",
+      "E": "Get Brightness",
+      "F": "Get brightness settings",
+      "G": "",
+      "H": "~XX125 1",
+      "I": "7E 30 30 31 32 35 20 31 0D",
+      "J": "aaa can be -50~ + 50",
+      "K": "Okaaa\n",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 118,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "22",
+      "E": "Get Contrast",
+      "F": "Get contrast settings",
+      "G": "",
+      "H": "~XX126 1",
+      "I": "7E 30 30 31 32 36 20 31 0D",
+      "J": "aaa can be -50~ + 50",
+      "K": "Okaaa\n",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 119,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "23",
+      "E": "Get Color Temperature",
+      "F": "Get color temperature settings",
+      "G": "",
+      "H": "~XX128 1",
+      "I": "7E 30 30 31 32 38 20 31 0D",
+      "J": "a=2 D65 (Standard)\na=4 D75 (Cool)\na=5 D83 (Cold)",
+      "K": "Oka\n",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 120,
+    "cells": {
+      "B": "",
+      "C": "D51 w/I\nL23 w/o",
+      "D": "24",
+      "E": "Get Digital Zoom I  (Generic無此功能)",
+      "F": "Get digital zoom settings",
+      "G": "TBC Calvin\n[Calvin 7/8] 確認MT9669 不支援Digiral Zoom\n[JoyceH7/8: TBC-Calvin JMGO O1]\n[Calvin 7/13] Core 購買機台已被拆解,無法實機確認\n[Joyce7/15: CORE check 網路上競品規格]\n[Calvin 7/19] \n提供JMGO O1/Digital Zoom 影片,僅支援Zoom out,不支援Zoom in. OSD 會隨背景連動縮放,無法達成Zoom out 調整下,OSD 固定大小.\n",
+      "H": "~XX159 1",
+      "I": "",
+      "J": "",
+      "K": "Oka\na=0 (50%)\na=1 (75%)\na=2 (100%)\na=3 (125%)\na=4 (150%)\na=5 (172%) \na=6 (by Digital Zoom II)",
+      "L": "",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 121,
+    "cells": {
+      "B": "",
+      "C": "TBCCore-0618",
+      "D": "25",
+      "E": "Get Digital Zoom II",
+      "F": "",
+      "G": "TBC Calvin\n[Calvin 7/8] 確認MT9669 不支援Digiral Zoom\n[JoyceH7/8: TBC-Calvin JMGO O1]\n[Calvin 7/13] Core 購買機台已被拆解,無法實機確認\n[Joyce7/15: CORE check 網路上競品規格]\n[Calvin 7/19] \n提供JMGO O1/Digital Zoom 影片,僅支援Zoom out,不支援Zoom in. OSD 會隨背景連動縮放,無法達成Zoom out 調整下,OSD 固定大小.",
+      "H": "~xx543 9",
+      "I": "7E 30 30 35 34 33 20 39 0D",
+      "J": "a=%",
+      "K": "Oka\nrange 100~50",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 122,
+    "cells": {
+      "B": "",
+      "C": "D51 w/I\nL23 w/o",
+      "D": "26",
+      "E": "Get CCA (*3) Color Setting Value x  (Generic無此功能)",
+      "F": "Get CCA x value",
+      "G": "TBC Calvin\n[Calvin7/8]\n1.) CCA 是 TI東西 for 光學校正 for Color Setting Color Gain，例如設定顏色 Gain/ Value。For 遠端調整顏色相關等數值。\n2.) L23 OK w/ this, All TI IC support CCA.",
+      "H": "~XX161 1",
+      "I": "",
+      "J": "",
+      "K": "Okna\nn= It's the low byte of the data which is transferred from the CCA color point. \nExample:The data is 0x1234, so this byte is 0x34. \na= It's the high byte of the data which is transferred from the CCA color point. \nExample:The data is 0x1234, so this byte is 0x12. ",
+      "L": "",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 123,
+    "cells": {
+      "B": "",
+      "C": "D51 w/I\nL23 w/o",
+      "D": "27",
+      "E": "Get CCA (*3) Color Setting Value y  (Generic無此功能)",
+      "F": "Get CCA y value",
+      "G": "",
+      "H": "~XX162 1",
+      "I": "",
+      "J": "",
+      "K": "Okna\nn= It's the low byte of the data which is transferred from the CCA color point. \nExample:The data is 0x1234, so this byte is 0x34. \na= It's the high byte of the data which is transferred from the CCA color point. \nExample:The data is 0x1234, so this byte is 0x12. ",
+      "L": "",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 124,
+    "cells": {
+      "B": "",
+      "C": "D51 w/I\nL23 w/o",
+      "D": "28",
+      "E": "Get CCA (*3) Color Setting Value Gain  (Generic無此功能)",
+      "F": "Get CCA gain value",
+      "G": "",
+      "H": "~XX163 1",
+      "I": "",
+      "J": "",
+      "K": "Okna\nn= It's the low byte of the data which is transferred from the CCA color point. \nExample:The data is 0x1234, so this byte is 0x34. \na= It's the high byte of the data which is transferred from the CCA color point. \nExample:The data is 0x1234, so this byte is 0x12. ",
+      "L": "",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 125,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "29",
+      "E": "Get Aspect Ratio",
+      "F": "Get aspect ratio settings",
+      "G": "",
+      "H": "~XX127 1",
+      "I": "7E 30 30 31 32 37 20 31 0D",
+      "J": "aa=7 Auto\naa=1 4:3\naa=2 16:9\naa=3 16:10\naa=6 Native",
+      "K": "Okaa",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 126,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "30",
+      "E": "Get Volume",
+      "F": "Get volume settings",
+      "G": "A= Volume 0~10",
+      "H": "~XX120 1 \n",
+      "I": "7E 30 30 31 32 30 20 31 0D",
+      "J": "a=0-100",
+      "K": "Oka\n",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 127,
+    "cells": {
+      "A": "(04/13)\nDone",
+      "B": "USB-A input source 要如何 Get ?\n\nFirware Version dddd 是 get Android FW version only ?  4/24 Eric said it is Android FW version.\n\nto Core : for this ? Informaiton 1:  Add a Get commnd similar to ~XX150,  where user can obtain a string of info with one query: Projector Satus, FW verison, Input Source, etc…",
+      "C": "askCore revise-0618",
+      "D": "31",
+      "E": "Get System Information",
+      "F": "Get Projector(Power) Status, \nFW versions, Input Source",
+      "G": "Information 1: \n",
+      "H": "~XX150 1\n",
+      "I": "7E 30 30 31 35 30 20 31 0D",
+      "J": "a = Power Status\na=0 Power Off\na=1 Power On\nbbbbb=00000\nc = Input Source\ncc=07 HDMI1\ncc=18 Android\ncc=21 USB Type C\ncc=12 Wireless dispay(Network display)\nd = Firmware Version \ndddd Firmware Version\ne = Display mode \nee=00 None\nee=01 Presentation \nee=02 Bright\nee=03 Cinema\nee=12 Game\nee=13 Cinema\nee=14 Vivid\nee=25 HLG\nee=21 HDR\nee=26 AI-PQ\nee=27 WCG",
+      "K": "Okabbbbbccdddee\n\n\n",
+      "L": "F",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 128,
+    "cells": {
+      "A": "(04/13)\nDone",
+      "B": "to Core : for this ? Informaiton 3:  Add Get command for Signal Status: Yes, No  (Unless Get input command already reports signal active?)",
+      "C": "OK-0618",
+      "D": "32",
+      "E": "Get Signal Status",
+      "F": "Get signal status of currunt input source",
+      "G": "",
+      "H": "~XX150 23 ",
+      "I": "7E 30 30 31 35 30 20 32 33 0D",
+      "J": "a=1 Yes (Active) \na=0 No (Inactive)",
+      "K": "Oka",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 129,
+    "cells": {
+      "B": "",
+      "C": "TBCCore-0618\n\nNOinRS232 Table",
+      "D": "33",
+      "E": "Get CMS (For Video)  - Hue",
+      "F": "Get CMS (For Video)  - Hue",
+      "G": "",
+      "H": "~XX258 1 ",
+      "I": "7E 30 30 32 35 38 20 31 0D",
+      "J": "aaa = -50~ + 50 (Red)\nbbb = -50~ + 50 (Green)\nccc =  -50~ + 50 (Blue)\nddd = -50~ + 50 (Cyan)\neee = -50~ + 50 (Yellow)\nfff =  -50~ + 50 (Magenta)",
+      "K": "Okaaabbbcccdddeeefff",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 130,
+    "cells": {
+      "B": "",
+      "C": "TBCCore-0618\n\nNOinRS232 Table",
+      "D": "34",
+      "E": "Get CMS (For Video)  - Gain",
+      "F": "Get CMS (For Video)  - Gain",
+      "G": "",
+      "H": "~XX258 2 ",
+      "I": "7E 30 30 32 35 38 20 32",
+      "J": "aaa = -50~ + 50 (Red)\nbbb = -50~ + 50 (Green)\nccc =  -50~ + 50 (Blue)\nddd = -50~ + 50 (Cyan)\neee = -50~ + 50 (Yellow)\nfff =  -50~ + 50 (Magenta)",
+      "K": "Okaaabbbcccdddeeefff",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 131,
+    "cells": {
+      "B": "",
+      "C": "TBCCore-0618",
+      "D": "35",
+      "E": "Video Mute\n(Screen off)",
+      "F": "",
+      "G": "",
+      "H": "~XX363 1",
+      "I": "7E 30 30 33 36 33 20 31 0D",
+      "J": "a = 0 Off\na = 1 On",
+      "K": "Oka\n",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 132,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "36",
+      "E": "Get Digital Signage",
+      "F": "",
+      "G": "",
+      "H": "~xx568 1",
+      "I": "7E 30 30 35 36 38 20 31 0D",
+      "J": "a = 0 Off\na = 1 On",
+      "K": "Oka\n",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 133,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "37",
+      "E": "Get H Keystone",
+      "F": "",
+      "G": "",
+      "H": "~xx543 4",
+      "I": "7E 30 30 35 34 33 20 34 0D",
+      "J": " -40~ +40",
+      "K": "Okaaa\n",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 134,
+    "cells": {
+      "B": "",
+      "C": "OK-0618",
+      "D": "38",
+      "E": "Get Rotation",
+      "F": "",
+      "G": "",
+      "H": "~xx543 10",
+      "I": "7E 30 30 35 34 33 20 39 0D\n7E 30 30 35 34 33 20 31 30 0D",
+      "J": " -15~ + 15",
+      "K": "Okaaa\n",
+      "L": "F",
+      "M": "Disable (F)",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 135,
+    "cells": {
+      "A": "askCore revised\n0618",
+      "B": "",
+      "C": "askCore revised\n0618",
+      "D": "39",
+      "E": "Read Android Software Version",
+      "F": "Read Android Software Version\n(Prefix & Length depends on model)",
+      "G": "",
+      "H": "~XX357 4\n7/3 Coretronic reply: We use  ~XX122 1 for L23, Since Optoma announced in RS232_Table_in MRS_2023_0619_v83 For 2023 new model, 請一併回覆所有版本，OkAaaMbbLccHddSeeXff",
+      "I": "7E 30 30 33 35 37 20 34 0D",
+      "J": "Okeee\neee = Android Software Version ",
+      "K": "Okeee\neee = Android Software Version ",
+      "L": "F",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "Q": "",
+      "R": "",
+      "S": "",
+      "T": "",
+      "U": "",
+      "V": "",
+      "W": "",
+      "X": "",
+      "Y": "",
+      "Z": "",
+      "AA": "",
+      "AB": "",
+      "AC": "",
+      "AD": "",
+      "AE": "",
+      "AF": "",
+      "AG": "",
+      "AH": "",
+      "AI": "",
+      "AJ": "",
+      "AK": "",
+      "AL": "",
+      "AM": ""
+    }
+  },
+  {
+    "row": 136,
+    "cells": {
+      "C": "",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "",
+      "I": "",
+      "J": "",
+      "K": "",
+      "L": "",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "Q": "",
+      "R": ""
+    }
+  },
+  {
+    "row": 137,
+    "cells": {
+      "B": "",
+      "C": "Joyce\n0514-1/0618",
+      "D": "",
+      "E": "System Message (System Auto Send)",
+      "F": "",
+      "G": "",
+      "H": "",
+      "I": "",
+      "J": "",
+      "K": "RESPONSE",
+      "L": "",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "Q": "",
+      "R": ""
+    }
+  },
+  {
+    "row": 138,
+    "cells": {
+      "A": "(04/13)\nDone",
+      "B": "to Core for this? Add Get command for to query Error: Return Info messages.",
+      "C": "OK-0514",
+      "D": "1",
+      "E": "Standby Mode",
+      "F": "",
+      "G": "by AUTO, 不需要下 commands\nTBC Calvin- 多久回傳一次 Message Date\n[Calvin 7/8] B77 ~ B83, 過溫,Fan Lock都是該事件被觸發後才會自動送出.\n[JoyceH7/8: 只會發出一次]\n[Joyce7/15: all PJ w/ the RS232 behavior, 會記錄在fty mode's Error Log]\n",
+      "H": "",
+      "I": "",
+      "J": "",
+      "K": "INFO0",
+      "L": "",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "Q": "",
+      "R": ""
+    }
+  },
+  {
+    "row": 139,
+    "cells": {
+      "A": "",
+      "B": "",
+      "C": "OK-0514",
+      "D": "2",
+      "E": "Warming up",
+      "F": "",
+      "G": "",
+      "H": "",
+      "I": "",
+      "J": "",
+      "K": "INFO1",
+      "L": "",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "Q": "",
+      "R": ""
+    }
+  },
+  {
+    "row": 140,
+    "cells": {
+      "A": "",
+      "B": "",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "3",
+      "E": "Cooling Down  (Not for RBG Laser)",
+      "F": "",
+      "G": "",
+      "H": "",
+      "I": "",
+      "J": "",
+      "K": "INFO2",
+      "L": "",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "Q": "",
+      "R": ""
+    }
+  },
+  {
+    "row": 141,
+    "cells": {
+      "A": "",
+      "B": "",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "4",
+      "E": "Out of Range  (Not for RBG Laser)",
+      "F": "",
+      "G": "",
+      "H": "",
+      "I": "",
+      "J": "",
+      "K": "INFO3",
+      "L": "",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "Q": "",
+      "R": ""
+    }
+  },
+  {
+    "row": 142,
+    "cells": {
+      "A": "",
+      "B": "",
+      "C": "OK-0514",
+      "D": "5",
+      "E": "Fan Lock",
+      "F": "",
+      "G": "",
+      "H": "",
+      "I": "",
+      "J": "",
+      "K": "INFO6",
+      "L": "",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "Q": "",
+      "R": ""
+    }
+  },
+  {
+    "row": 143,
+    "cells": {
+      "A": "",
+      "B": "",
+      "C": "OK-0514",
+      "D": "6",
+      "E": "Over Temperature",
+      "F": "",
+      "G": "",
+      "H": "",
+      "I": "",
+      "J": "",
+      "K": "INFO7",
+      "L": "",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "Q": "",
+      "R": ""
+    }
+  },
+  {
+    "row": 144,
+    "cells": {
+      "A": "",
+      "B": "",
+      "C": "D51 w/i\nL23 w/o",
+      "D": "7",
+      "E": "LightSource Hours Running Out  (Not for RBG Laser)",
+      "F": "INFO8",
+      "G": "",
+      "H": "",
+      "I": "",
+      "J": "",
+      "K": "",
+      "L": "",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": "",
+      "Q": "",
+      "R": ""
+    }
+  },
+  {
+    "row": 145,
+    "cells": {
+      "C": "",
+      "D": "",
+      "E": "",
+      "F": "",
+      "G": "",
+      "H": "",
+      "I": "",
+      "J": "",
+      "K": "",
+      "L": "",
+      "M": "",
+      "N": "",
+      "O": "",
+      "P": ""
+    }
+  },
+  {
+    "row": 146,
+    "cells": {
+      "C": "",
+      "E": "*Above column#134~#141 are For reply EA question4: \n\"Add Get command for to query Error: Return Info messages.\"\n*System Message (System Auto Send), it is by AUTO.",
+      "F": ""
+    }
+  },
+  {
+    "row": 147,
+    "cells": {
+      "C": "",
+      "E": "",
+      "F": ""
+    }
+  },
+  {
+    "row": 148,
+    "cells": {
+      "C": "",
+      "E": "",
+      "F": ""
+    }
+  },
+  {
+    "row": 149,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 150,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 151,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 152,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 153,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 154,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 155,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 156,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 157,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 158,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 159,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 160,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 161,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 162,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 163,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 164,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 165,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 166,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 167,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 168,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 169,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 170,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 171,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 172,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 173,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 174,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 175,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 176,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 177,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 178,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 179,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 180,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 181,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 182,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 183,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 184,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 185,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 186,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 187,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 188,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 189,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 190,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 191,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 192,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 193,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 194,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 195,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 196,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 197,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 198,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 199,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 200,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 201,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 202,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 203,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 204,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 205,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 206,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 207,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 208,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 209,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 210,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 211,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 212,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 213,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 214,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 215,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 216,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 217,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 218,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 219,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 220,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 221,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 222,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 223,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 224,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 225,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 226,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 227,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 228,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 229,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 230,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 231,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 232,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 233,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 234,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 235,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 236,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 237,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 238,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 239,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 240,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 241,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 242,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 243,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 244,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 245,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 246,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 247,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 248,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 249,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 250,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 251,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 252,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 253,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 254,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 255,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 256,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 257,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 258,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 259,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 260,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 261,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 262,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 263,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 264,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 265,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 266,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 267,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 268,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 269,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 270,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 271,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 272,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 273,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 274,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 275,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 276,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 277,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 278,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 279,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 280,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 281,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 282,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 283,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 284,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 285,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 286,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 287,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 288,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 289,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 290,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 291,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 292,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 293,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 294,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 295,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 296,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 297,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 298,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 299,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 300,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 301,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 302,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 303,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 304,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 305,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 306,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 307,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 308,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 309,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 310,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 311,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 312,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 313,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 314,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 315,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 316,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 317,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 318,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 319,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 320,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 321,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 322,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 323,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 324,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 325,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 326,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 327,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 328,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 329,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 330,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 331,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 332,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 333,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 334,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 335,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 336,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 337,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 338,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 339,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 340,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 341,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 342,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 343,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 344,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 345,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 346,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 347,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 348,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 349,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 350,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 351,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 352,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 353,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 354,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 355,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 356,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 357,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 358,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 359,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 360,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 361,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 362,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 363,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 364,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 365,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 366,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 367,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 368,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 369,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 370,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 371,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 372,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 373,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 374,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 375,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 376,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 377,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 378,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 379,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 380,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 381,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 382,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 383,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 384,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 385,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 386,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 387,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 388,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 389,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 390,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 391,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 392,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 393,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 394,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 395,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 396,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 397,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 398,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 399,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 400,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 401,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 402,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 403,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 404,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 405,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 406,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 407,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 408,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 409,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 410,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 411,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 412,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 413,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 414,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 415,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 416,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 417,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 418,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 419,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 420,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 421,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 422,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 423,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 424,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 425,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 426,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 427,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 428,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 429,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 430,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 431,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 432,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 433,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 434,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 435,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 436,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 437,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 438,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 439,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 440,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 441,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 442,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 443,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 444,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 445,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 446,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 447,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 448,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 449,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 450,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 451,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 452,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 453,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 454,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 455,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 456,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 457,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 458,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 459,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 460,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 461,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 462,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 463,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 464,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 465,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 466,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 467,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 468,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 469,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 470,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 471,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 472,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 473,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 474,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 475,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 476,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 477,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 478,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 479,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 480,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 481,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 482,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 483,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 484,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 485,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 486,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 487,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 488,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 489,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 490,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 491,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 492,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 493,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 494,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 495,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 496,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 497,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 498,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 499,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 500,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 501,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 502,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 503,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 504,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 505,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 506,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 507,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 508,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 509,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 510,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 511,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 512,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 513,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 514,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 515,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 516,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 517,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 518,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 519,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 520,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 521,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 522,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 523,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 524,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 525,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 526,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 527,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 528,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 529,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 530,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 531,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 532,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 533,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 534,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 535,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 536,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 537,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 538,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 539,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 540,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 541,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 542,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 543,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 544,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 545,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 546,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 547,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 548,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 549,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 550,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 551,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 552,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 553,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 554,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 555,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 556,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 557,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 558,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 559,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 560,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 561,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 562,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 563,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 564,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 565,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 566,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 567,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 568,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 569,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 570,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 571,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 572,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 573,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 574,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 575,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 576,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 577,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 578,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 579,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 580,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 581,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 582,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 583,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 584,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 585,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 586,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 587,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 588,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 589,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 590,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 591,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 592,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 593,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 594,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 595,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 596,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 597,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 598,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 599,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 600,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 601,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 602,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 603,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 604,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 605,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 606,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 607,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 608,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 609,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 610,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 611,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 612,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 613,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 614,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 615,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 616,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 617,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 618,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 619,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 620,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 621,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 622,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 623,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 624,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 625,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 626,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 627,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 628,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 629,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 630,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 631,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 632,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 633,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 634,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 635,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 636,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 637,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 638,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 639,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 640,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 641,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 642,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 643,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 644,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 645,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 646,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 647,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 648,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 649,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 650,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 651,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 652,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 653,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 654,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 655,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 656,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 657,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 658,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 659,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 660,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 661,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 662,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 663,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 664,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 665,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 666,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 667,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 668,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 669,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 670,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 671,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 672,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 673,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 674,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 675,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 676,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 677,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 678,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 679,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 680,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 681,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 682,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 683,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 684,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 685,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 686,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 687,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 688,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 689,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 690,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 691,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 692,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 693,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 694,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 695,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 696,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 697,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 698,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 699,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 700,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 701,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 702,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 703,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 704,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 705,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 706,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 707,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 708,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 709,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 710,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 711,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 712,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 713,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 714,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 715,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 716,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 717,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 718,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 719,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 720,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 721,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 722,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 723,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 724,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 725,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 726,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 727,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 728,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 729,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 730,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 731,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 732,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 733,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 734,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 735,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 736,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 737,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 738,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 739,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 740,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 741,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 742,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 743,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 744,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 745,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 746,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 747,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 748,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 749,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 750,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 751,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 752,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 753,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 754,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 755,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 756,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 757,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 758,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 759,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 760,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 761,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 762,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 763,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 764,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 765,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 766,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 767,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 768,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 769,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 770,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 771,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 772,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 773,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 774,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 775,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 776,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 777,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 778,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 779,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 780,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 781,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 782,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 783,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 784,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 785,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 786,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 787,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 788,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 789,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 790,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 791,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 792,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 793,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 794,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 795,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 796,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 797,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 798,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 799,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 800,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 801,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 802,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 803,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 804,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 805,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 806,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 807,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 808,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 809,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 810,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 811,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 812,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 813,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 814,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 815,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 816,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 817,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 818,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 819,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 820,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 821,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 822,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 823,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 824,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 825,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 826,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 827,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 828,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 829,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 830,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 831,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 832,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 833,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 834,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 835,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 836,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 837,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 838,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 839,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 840,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 841,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 842,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 843,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 844,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 845,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 846,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 847,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 848,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 849,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 850,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 851,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 852,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 853,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 854,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 855,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 856,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 857,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 858,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 859,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 860,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 861,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 862,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 863,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 864,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 865,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 866,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 867,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 868,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 869,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 870,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 871,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 872,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 873,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 874,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 875,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 876,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 877,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 878,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 879,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 880,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 881,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 882,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 883,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 884,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 885,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 886,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 887,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 888,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 889,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 890,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 891,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 892,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 893,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 894,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 895,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 896,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 897,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 898,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 899,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 900,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 901,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 902,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 903,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 904,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 905,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 906,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 907,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 908,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 909,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 910,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 911,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 912,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 913,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 914,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 915,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 916,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 917,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 918,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 919,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 920,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 921,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 922,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 923,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 924,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 925,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 926,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 927,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 928,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 929,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 930,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 931,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 932,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 933,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 934,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 935,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 936,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 937,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 938,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 939,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 940,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 941,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 942,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 943,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 944,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 945,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 946,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 947,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 948,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 949,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 950,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 951,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 952,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 953,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 954,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 955,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 956,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 957,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 958,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 959,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 960,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 961,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 962,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 963,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 964,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 965,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 966,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 967,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 968,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 969,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 970,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 971,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 972,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 973,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 974,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 975,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 976,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 977,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 978,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 979,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 980,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 981,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 982,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 983,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 984,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 985,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 986,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 987,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 988,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 989,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 990,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 991,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 992,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 993,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 994,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 995,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 996,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 997,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 998,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 999,
+    "cells": {
+      "C": ""
+    }
+  },
+  {
+    "row": 1000,
+    "cells": {
+      "C": ""
+    }
+  }
+]
