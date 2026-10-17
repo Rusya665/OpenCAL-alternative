@@ -1,0 +1,822 @@
+<USER_REQUEST>
+help me uinderstand how to make the c# automatiaclly understnad where the project is currently laying at. whoiut passing the complex brep etc "Conversation with Gemini
+I have this cluster to make the projector's projection.
+do you understnad how it works?
+The cluster constructs the optical projection frustum (the throw pyramid) of a projector from optical specification parameters.
+Geometric Logic and Workflow
+Target Plane Placement
+Vector Translation: The cluster takes the lens origin point (Pt) and moves it along the projection axis by the throw distance (Distance D) and vertically by the lens shift offset (Offset Hd) using a Construct Vector and Move component.
+Plane Construction: An XZ Plane is placed at this translated point, establishing the coordinate system of the projection screen perpendicular to the optical throw axis.
+Screen Boundary Generation
+Domain Calculation: The specified image width and height are divided and mapped into negative and positive bounds using division (/) and negation (-x) components to generate a centered horizontal domain.
+Rectangle Construction: The Rectangle component builds the planar projection boundary on the target XZ Plane.
+Frustum Geometry Assembly
+Vertex Extraction: The rectangle is decomposed using Discontinuity to extract its four corner points. A List Item component isolates vertices i, i+1, i+2, and i+3.
+Pyramid Faces: Four 4Pt Surface components construct triangular/quad faces connecting the original lens center point (Pt) to each consecutive pair of screen corner vertices.
+Brep Join: The side faces are joined (Brep Join) into an open or capped polysurface representing the projection cone volume (Output B).
+Secondary Range / Verification Branch (Lower Section)
+A secondary parallel branch evaluates a secondary throw boundary (using the 5000 reference slider and checking inputs).
+It constructs an extended or maximum boundary rectangle and outputs clearance or centerline vectors (L) and status indicators (I) to verify distance constraints against the room envelope.
+can you make a python code out of that? yes or no?
+Yes.
+Python
+import Rhino.Geometry as rg def create_projector_frustum(lens_pt, distance_d, offset_hd, width, height): """ Recreates the projector projection frustum cluster in Grasshopper Python. Inputs: lens_pt: rg.Point3d (Apex point of the projector lens) distance_d: float (Throw distance along Y-axis) offset_hd: float (Vertical lens shift along Z-axis) width: float (Screen projection width) height: float (Screen projection height) Returns: brep: rg.Brep (Joined projection cone volume) """ # 1. Target screen origin translation shift_vector = rg.Vector3d(0.0, distance_d, offset_hd) target_pt = lens_pt + shift_vector # 2. Target plane (XZ Plane: X = World X, Y = World Z) screen_plane = rg.Plane(target_pt, rg.Vector3d.XAxis, rg.Vector3d.ZAxis) # 3. Projection boundary rectangle x_domain = rg.Interval(-width / 2.0, width / 2.0) y_domain = rg.Interval(-height / 2.0, height / 2.0) rect = rg.Rectangle3d(screen_plane, x_domain, y_domain) # 4. Corner vertices c0 = rect.Corner(0) c1 = rect.Corner(1) c2 = rect.Corner(2) c3 = rect.Corner(3) # 5. Side faces and screen base face tolerance = 0.001 faces = [ rg.Brep.CreateFromCornerPoints(lens_pt, c0, c1, tolerance), rg.Brep.CreateFromCornerPoints(lens_pt, c1, c2, tolerance), rg.Brep.CreateFromCornerPoints(lens_pt, c2, c3, tolerance), rg.Brep.CreateFromCornerPoints(lens_pt, c3, c0, tolerance), rg.Brep.CreateFromCornerPoints(c0, c1, c2, c3, tolerance) ] # 6. Join faces into a single Brep joined = rg.Brep.JoinBreps(faces, tolerance) return joined[0] if joined else None # GhPython Component Execution if "Pt" in globals() and "Distance_D" in globals() and "Offset_Hd" in globals() and "Width" in globals() and "Height" in globals(): B = create_projector_frustum(Pt, Distance_D, Offset_Hd, Width, Height)
+the resulted cone goes here "import Rhino
+import Rhino.Geometry as rg
+import rhinoscriptsyntax as rs
+import scriptcontext
+import System
+import math
+# --------------------------------------------------------------------------
+# 0. Robust Geometry Resolvers (Rhino Doc / GH Doc / GUID / Direct)
+# --------------------------------------------------------------------------
+def resolve_geo(obj):
+if obj is None:
+return None
+if isinstance(obj, System.Guid):
+if 'ghdoc' in globals() and ghdoc:
+gh_obj = ghdoc.Objects.Find(obj)
+if gh_obj and hasattr(gh_obj, 'Geometry'):
+return gh_obj.Geometry
+if scriptcontext.doc:
+doc_obj = scriptcontext.doc.Objects.Find(obj)
+if doc_obj and hasattr(doc_obj, 'Geometry'):
+return doc_obj.Geometry
+return obj
+def resolve_brep(obj):
+g = resolve_geo(obj)
+if isinstance(g, rg.Brep):
+return g
+if isinstance(g, rg.Surface):
+return g.ToBrep()
+b = rs.coercebrep(obj)
+return b if b else None
+def resolve_point(obj):
+g = resolve_geo(obj)
+if isinstance(g, rg.Point3d):
+return g
+pt = rs.coerce3dpoint(obj)
+return pt if pt else None
+def resolve_float(val, default):
+if val is None:
+return default
+try:
+return float(val)
+except:
+return default
+def get_var(names, default=None):
+for n in names:
+if n in globals() and globals()[n] is not None:
+return globals()[n]
+return default
+# --------------------------------------------------------------------------
+# 1. Auto-Detect Inputs from globals()
+# --------------------------------------------------------------------------
+cone_input = get_var(['ConeBrep', 'cone', 'Cone', 'B', 'cone_brep', 'brep_cone'])
+lens_input = get_var(['LensBrep', 'lens', 'Lens', 'L', 'lens_brep', 'brep_lens'])
+pt_input = get_var(['ProjectorPt', 'Pt', 'pt', 'Origin', 'P0', 'projector_pt'])
+focal_input = get_var(['FocalLength', 'f', 'F', 'focal', 'focal_length'], 200.0)
+vial_input = get_var(['VialDistance', 'vial_dist', 'Dist', 'dist', 'throw'], 50.0)
+rays_input = get_var(['NumSampleRays', 'rays', 'N', 'samples'], 32)
+cone_brep = resolve_brep(cone_input)
+lens_brep = resolve_brep(lens_input)
+projector_pt = resolve_point(pt_input)
+focal_length = resolve_float(focal_input, 200.0)
+vial_dist = resolve_float(vial_input, 50.0)
+num_rays = int(resolve_float(rays_input, 32))
+tol = scriptcontext.doc.ModelAbsoluteTolerance if (scriptcontext.doc and scriptcontext.doc.ModelAbsoluteTolerance > 0) else 0.01
+tol = max(tol, 0.01)
+# Default Outputs
+LensFootprint = None
+CollimatedBeam = None
+IncidentCone = None
+RayLines = []
+Info = []
+# --------------------------------------------------------------------------
+# 2. Geometry & Optical Processing
+# --------------------------------------------------------------------------
+if cone_brep and lens_brep:
+# If ProjectorPt was not wired, derive pupil apex from cone's apex vertex
+if not projector_pt:
+v_candidates = [v.Location for v in cone_brep.Vertices]
+if v_candidates:
+# The apex vertex is the point furthest from the lens centroid
+lens_bbox_center = lens_brep.GetBoundingBox(True).Center
+projector_pt = max(v_candidates, key=lambda p: p.DistanceTo(lens_bbox_center))
+# Identify front face of the lens (closest to projector)
+front_face = None
+min_dist = float('inf')
+for face in lens_brep.Faces:
+u_m = (face.Domain(0).Min + face.Domain(0).Max)
+0.5
+v_m = (face.Domain(1).Min + face.Domain(1).Max)
+0.5
+pt_f = face.PointAt(u_m, v_m)
+d = pt_f.DistanceTo(projector_pt)
+if d < min_dist:
+min_dist = d
+front_face = face
+if front_face:
+# Optical center (centroid) and forward normal vector
+amp = rg.AreaMassProperties.Compute(front_face)
+lens_center = amp.Centroid if amp else front_face.PointAt(0.5, 0.5)
+u_c = (front_face.Domain(0).Min + front_face.Domain(0).Max)
+0.5
+v_c = (front_face.Domain(1).Min + front_face.Domain(1).Max)
+0.5
+lens_normal = front_face.NormalAt(u_c, v_c)
+if rg.Vector3d.Multiply(lens_normal, lens_center - projector_pt) < 0:
+lens_normal.Reverse()
+lens_normal.Unitize()
+# ------------------------------------------------------------------
+# 3. Intersect Cone with Lens Face to get Footprint
+# ------------------------------------------------------------------
+face_brep = front_face.DuplicateFace(False)
+rc, int_crvs, _ = rg.Intersect.Intersection.BrepBrep(cone_brep, face_brep, tol)
+footprint = None
+if rc and int_crvs:
+joined = rg.Curve.JoinCurves(int_crvs, tol)
+if joined:
+footprint = joined[0]
+if not footprint:
+# Fallback Boolean intersection
+bool_res = rg.Brep.CreateBooleanIntersection(cone_brep, lens_brep, tol)
+if bool_res and len(bool_res) > 0:
+edges = bool_res[0].DuplicateEdgeCurves(True)
+joined = rg.Curve.JoinCurves(edges, tol)
+if joined:
+footprint = joined[0]
+if footprint:
+if not footprint.IsClosed:
+footprint.MakeClosed(tol)
+LensFootprint = footprint
+# --------------------------------------------------------------
+# 4. Ray Bending (Snell's Law / Thin-Lens Collimation)
+# --------------------------------------------------------------
+t_params = footprint.DivideByCount(num_rays, True)
+pts_vial = []
+angles = []
+for t in t_params:
+P_lens = footprint.PointAt(t)
+# Incoming ray vector & distance along optical axis
+v_in = P_lens - projector_pt
+d_axis = rg.Vector3d.Multiply(v_in, lens_normal)
+v_in_trans = v_in - lens_normal * d_axis
+# Transverse distance from lens optical center
+dr = P_lens - lens_center
+dr_trans = dr - lens_normal * rg.Vector3d.Multiply(dr, lens_normal)
+# Bending deflection: v_out_trans = (v_in_trans / d) - (dr_trans / f)
+v_out_trans = (v_in_trans * (1.0 / max(d_axis, 1e-6)))
+(dr_trans * (1.0 / max(focal_length, 1e-6)))
+v_out = lens_normal + v_out_trans
+v_out.Unitize()
+P_vial = P_lens + v_out * vial_dist
+pts_vial.append(P_vial)
+RayLines.append(rg.Line(projector_pt, P_lens))
+RayLines.append(rg.Line(P_lens, P_vial))
+ang = math.degrees(math.acos(max(-1.0, min(1.0, rg.Vector3d.Multiply(v_out, lens_normal)))))
+angles.append(ang)
+# --------------------------------------------------------------
+# 5. Build 3D Solid Collimated Beam
+# --------------------------------------------------------------
+vial_crv = rg.Curve.CreateInterpolatedCurve(pts_vial, 3)
+if not vial_crv.IsClosed:
+vial_crv.MakeClosed(tol)
+lofts = rg.Brep.CreateFromLoft([footprint, vial_crv], rg.Point3d.Unset, rg.Point3d.Unset, rg.LoftType.Normal, False)
+if lofts and len(lofts) > 0:
+CollimatedBeam = lofts[0].CapPlanarHoles(tol)
+inc_lofts = rg.Brep.CreateFromLoft([footprint], projector_pt, rg.Point3d.Unset, rg.LoftType.Normal, False)
+if inc_lofts and len(inc_lofts) > 0:
+IncidentCone = inc_lofts[0].CapPlanarHoles(tol)
+avg_a = sum(angles) / len(angles) if angles else 0
+Info = [
+"Distance to Lens: {:.2f} mm".format(lens_center.DistanceTo(projector_pt)),
+"Avg Angle After Lens: {:.3f} deg (0.0 = pure telecentric)".format(avg_a),
+"Status: COLLIMATED" if avg_a < 1.0 else "Status: WEAKLY CONVERGING"
+]"
+make a new code based on this latest code I saherred - so it wil lcreate the prjection itself and only till the lens - since now we do twice more work
+Python
+import Rhino import Rhino.Geometry as rg import rhinoscriptsyntax as rs import scriptcontext import System import math # -------------------------------------------------------------------------- # 0. Resolvers # -------------------------------------------------------------------------- def resolve_geo(obj): if obj is None: return None if isinstance(obj, System.Guid): if 'ghdoc' in globals() and ghdoc: gh_obj = ghdoc.Objects.Find(obj) if gh_obj and hasattr(gh_obj, 'Geometry'): return gh_obj.Geometry if scriptcontext.doc: doc_obj = scriptcontext.doc.Objects.Find(obj) if doc_obj and hasattr(doc_obj, 'Geometry'): return doc_obj.Geometry return obj def resolve_brep(obj): g = resolve_geo(obj) if isinstance(g, rg.Brep): return g if isinstance(g, rg.Surface): return g.ToBrep() b = rs.coercebrep(obj) return b if b else None def resolve_point(obj): g = resolve_geo(obj) if isinstance(g, rg.Point3d): return g pt = rs.coerce3dpoint(obj) return pt if pt else None def resolve_plane(obj): if isinstance(obj, rg.Plane): return obj return None def resolve_float(val, default): if val is None: return default try: return float(val) except: return default def get_var(names, default=None): for n in names: if n in globals() and globals()[n] is not None: return globals()[n] return default # -------------------------------------------------------------------------- # 1. Inputs & Defaults # -------------------------------------------------------------------------- pt_input = get_var(['ProjectorPt', 'Pt', 'pt', 'Origin', 'P0', 'projector_pt']) lens_input = get_var(['LensBrep', 'lens', 'Lens', 'L', 'lens_brep', 'brep_lens']) plane_input = get_var(['ProjectorPlane', 'ProjPlane', 'Plane', 'plane']) # Optoma Projector Geometry Inputs (Replaces external cluster) dist_d_input = get_var(['Distance_D', 'Distance D', 'DistanceD', 'dist_d', 'D'], 4050.0) offset_input = get_var(['Offset_Hd', 'Offset Hd', 'OffsetHd', 'offset_hd', 'Hd'], 93.0) width_input = get_var(['Width', 'width', 'W', 'w'], 3320.0) height_input = get_var(['Height', 'height', 'H', 'h'], 1870.0) # Optional pre-built cone input cone_input = get_var(['ConeBrep', 'cone', 'Cone', 'B', 'cone_brep']) # Optics Inputs focal_input = get_var(['FocalLength', 'f', 'F', 'focal', 'focal_length'], 200.0) vial_input = get_var(['VialDistance', 'vial_dist', 'Dist', 'dist', 'throw'], 50.0) rays_input = get_var(['NumSampleRays', 'rays', 'N', 'samples'], 32) projector_pt = resolve_point(pt_input) lens_brep = resolve_brep(lens_input) proj_plane = resolve_plane(plane_input) dist_d = resolve_float(dist_d_input, 4050.0) offset_hd = resolve_float(offset_input, 93.0) width = resolve_float(width_input, 3320.0) height = resolve_float(height_input, 1870.0) focal_length = resolve_float(focal_input, 200.0) vial_dist = resolve_float(vial_input, 50.0) num_rays = int(resolve_float(rays_input, 32)) tol = scriptcontext.doc.ModelAbsoluteTolerance if (scriptcontext.doc and scriptcontext.doc.ModelAbsoluteTolerance > 0) else 0.01 tol = max(tol, 0.001) # Outputs IncidentCone = None ProjectionCone = None B = None LensFootprint = None CollimatedBeam = None RayLines = [] Info = [] # -------------------------------------------------------------------------- # 2. Build Internal Projection Frustum (Cluster Replacement) # -------------------------------------------------------------------------- cone_brep = resolve_brep(cone_input) if cone_brep is None and projector_pt is not None: if proj_plane is None: # Standard Optoma cluster setup: optical throw along +Y, vertical offset along +Z target_pt = projector_pt + rg.Vector3d(0.0, dist_d, offset_hd) screen_plane = rg.Plane(target_pt, rg.Vector3d.XAxis, rg.Vector3d.ZAxis) else: # Arbitrarily oriented projector plane (Z = optical axis, Y = vertical axis) target_pt = projector_pt + (proj_plane.ZAxis * dist_d) + (proj_plane.YAxis * offset_hd) screen_plane = rg.Plane(target_pt, proj_plane.XAxis, proj_plane.YAxis) x_dom = rg.Interval(-width * 0.5, width * 0.5) y_dom = rg.Interval(-height * 0.5, height * 0.5) rect = rg.Rectangle3d(screen_plane, x_dom, y_dom) c0 = rect.Corner(0) c1 = rect.Corner(1) c2 = rect.Corner(2) c3 = rect.Corner(3) pyramid_faces = [ rg.Brep.CreateFromCornerPoints(projector_pt, c0, c1, tol), rg.Brep.CreateFromCornerPoints(projector_pt, c1, c2, tol), rg.Brep.CreateFromCornerPoints(projector_pt, c2, c3, tol), rg.Brep.CreateFromCornerPoints(projector_pt, c3, c0, tol), rg.Brep.CreateFromCornerPoints(c0, c1, c2, c3, tol) ] valid_faces = [f for f in pyramid_faces if f is not None] joined = rg.Brep.JoinBreps(valid_faces, tol) if joined and len(joined) > 0: cone_brep = joined[0] # -------------------------------------------------------------------------- # 3. Intersect Frustum with Lens & Build Incident Cone (Only to Lens) # -------------------------------------------------------------------------- if cone_brep and lens_brep and projector_pt: # Locate front face of the lens front_face = None min_dist = float('inf') for face in lens_brep.Faces: u_m = (face.Domain(0).Min + face.Domain(0).Max) * 0.5 v_m = (face.Domain(1).Min + face.Domain(1).Max) * 0.5 pt_f = face.PointAt(u_m, v_m) d = pt_f.DistanceTo(projector_pt) if d < min_dist: min_dist = d front_face = face if front_face: amp = rg.AreaMassProperties.Compute(front_face) u_c = (front_face.Domain(0).Min + front_face.Domain(0).Max) * 0.5 v_c = (front_face.Domain(1).Min + front_face.Domain(1).Max) * 0.5 lens_center = amp.Centroid if amp else front_face.PointAt(u_c, v_c) lens_normal = front_face.NormalAt(u_c, v_c) if rg.Vector3d.Multiply(lens_normal, lens_center - projector_pt) < 0: lens_normal.Reverse() lens_normal.Unitize() # Intersect full frustum with lens face face_brep = front_face.DuplicateFace(False) rc, int_crvs, _ = rg.Intersect.Intersection.BrepBrep(cone_brep, face_brep, tol) footprint = None if rc and int_crvs: joined_crvs = rg.Curve.JoinCurves(int_crvs, tol) if joined_crvs: footprint = joined_crvs[0] if not footprint: bool_res = rg.Brep.CreateBooleanIntersection(cone_brep, lens_brep, tol) if bool_res and len(bool_res) > 0: edges = bool_res[0].DuplicateEdgeCurves(True) joined_edges = rg.Curve.JoinCurves(edges, tol) if joined_edges: footprint = joined_edges[0] if footprint: if not footprint.IsClosed: footprint.MakeClosed(tol) LensFootprint = footprint # Create the incident cone truncated strictly at the lens surface inc_lofts = rg.Brep.CreateFromLoft([footprint], projector_pt, rg.Point3d.Unset, rg.LoftType.Normal, False) if inc_lofts and len(inc_lofts) > 0: IncidentCone = inc_lofts[0].CapPlanarHoles(tol) ProjectionCone = IncidentCone B = IncidentCone # -------------------------------------------------------------- # 4. Ray Bending & Collimated Volume # -------------------------------------------------------------- t_params = footprint.DivideByCount(num_rays, True) pts_vial = [] angles = [] for t in t_params: P_lens = footprint.PointAt(t) v_in = P_lens - projector_pt d_axis = rg.Vector3d.Multiply(v_in, lens_normal) v_in_trans = v_in - lens_normal * d_axis dr = P_lens - lens_center dr_trans = dr - lens_normal * rg.Vector3d.Multiply(dr, lens_normal) # Thin-lens deflection formula v_out_trans = (v_in_trans * (1.0 / max(d_axis, 1e-6))) - (dr_trans * (1.0 / max(focal_length, 1e-6))) v_out = lens_normal + v_out_trans v_out.Unitize() P_vial = P_lens + v_out * vial_dist pts_vial.append(P_vial) RayLines.append(rg.Line(projector_pt, P_lens)) RayLines.append(rg.Line(P_lens, P_vial)) ang = math.degrees(math.acos(max(-1.0, min(1.0, rg.Vector3d.Multiply(v_out, lens_normal))))) angles.append(ang) vial_crv = rg.Curve.CreateInterpolatedCurve(pts_vial, 3) if not vial_crv.IsClosed: vial_crv.MakeClosed(tol) lofts = rg.Brep.CreateFromLoft([footprint, vial_crv], rg.Point3d.Unset, rg.Point3d.Unset, rg.LoftType.Normal, False) if lofts and len(lofts) > 0: CollimatedBeam = lofts[0].CapPlanarHoles(tol) avg_a = sum(angles) / len(angles) if angles else 0.0 Info = [ "Distance Projector to Lens: {:.2f} mm".format(lens_center.DistanceTo(projector_pt)), "Avg Angle After Lens: {:.3f} deg (0.0 = telecentric)".format(avg_a), "Status: COLLIMATED" if avg_a < 1.0 else "Status: DIVERGING / CONVERGING" ]
+how this works now? step byu step explanation
+also expaln each input
+then comapre this pythion copde to C+ or C# version of it
+Step-by-Step Execution Flow
+Input Resolution & Type Coercion The script inspects the Grasshopper execution scope for predefined input variable names. It resolves geometric references, Rhino document GUIDs, and untyped Grasshopper data types into explicit Rhino.Geometry types (Point3d, Brep, Plane, float) via utility resolvers (resolve_geo, resolve_brep, resolve_point).
+Parametric Frustum Generation If an external cone is not supplied, the script synthesizes the projector frustum internally using the Optoma optical specifications: PNG+ 1
+Constructs the screen center point by translating ProjectorPt along the optical axis by throw distance Distance_D and vertically by lens shift Offset_Hd. PNG+ 1
+Generates a planar projection screen rectangle centered at this point with dimensions Width × Height on an XZ plane (or an oriented plane if ProjectorPlane is provided). PNG+ 1
+Generates five boundary surfaces connecting ProjectorPt to the four corners of the rectangle and caps the base. PNG
+Joins the surfaces into a closed polysurface (cone_brep) using document absolute tolerance. PNG
+Lens Front-Face Identification The script iterates over all sub-surfaces (Faces) of LensBrep. It computes the UV midpoint of each face domain:
+um=2umin+umax,vm=2vmin+vmax
+It identifies the front optical face by finding the face whose midpoint has the minimum Euclidean distance to ProjectorPt. It extracts the face normal n^ and centroid, orienting n^ towards the optical path direction.
+Footprint Extraction via Surface Intersection The script computes the geometric intersection between cone_brep and the isolated lens front face via Rhino.Geometry.Intersect.Intersection.BrepBrep.
+If the surface-surface intersection succeeds, the resulting curve segments are joined into a closed boundary curve (LensFootprint).
+If surface intersection returns null, it triggers a fallback Boolean intersection (Brep.CreateBooleanIntersection) between the full frustum and the lens solid to extract the perimeter edge curves.
+Truncated Incident Cone Construction Instead of keeping an unbounded or full throw-length cone, the script creates a ruled loft (Brep.CreateFromLoft) between the single vertex ProjectorPt and the closed boundary LensFootprint. The planar base at the lens interface is capped using CapPlanarHoles. The resulting solid represents the beam volume strictly from the projector emission pupil to the lens surface.
+Thin-Lens Ray Deflection and Refraction The LensFootprint curve is divided into N equidistant parameters based on NumSampleRays. For each perimeter point Plens:
+The incoming ray vector vin=Plens−Pprojector is decomposed into an axial component daxis=vin⋅n^ and a transverse component vin,⊥=vin−daxisn^.
+The transverse position relative to the lens optical center is Δr⊥=(Plens−Pcenter)−((Plens−Pcenter)⋅n^)n^.
+Thin-lens refraction calculates the deflected transverse direction:
+vout,⊥=daxisvin,⊥−fΔr⊥
+The resulting vector vout=n^+vout,⊥ is unitized.
+Collimated Beam Solid Construction Each refracted ray is projected forward by VialDistance:
+Pvial=Plens+vout⋅dvial
+An interpolated curve is fitted through the resulting points {Pvial}. The script lofts a solid polysurface between LensFootprint and the projected vial boundary curve, capping both planar ends to generate CollimatedBeam.
+Input Parameter Definitions
+Parameter
+Type
+Default Value
+Description
+ProjectorPt (Pt)
+Point3d
+None (Required)
+Coordinates of the projector optical emission center / pupil apex. PNG+ 1
+LensBrep (L)
+Brep
+None (Required)
+The 3D polysurface geometry of the collimation lens.
+ProjectorPlane
+Plane
+World XZ shifted
+Optional orientation plane defining optical axis and roll. If omitted, +Y is optical axis, +Z is vertical shift. PNG+ 1
+Distance_D
+float
+4050.0 mm
+Nominal throw distance from projector pupil to virtual screen. PNG+ 1
+Offset_Hd
+float
+93.0 mm
+Vertical optical lens offset (keystone shift parameter) along local Z. PNG+ 1
+Width
+float
+3320.0 mm
+Projected image width at distance Distance_D. PNG+ 1
+Height
+float
+1870.0 mm
+Projected image height at distance Distance_D. PNG
+ConeBrep
+Brep
+None
+Optional override input. Bypasses parametric frustum generation if supplied directly.
+FocalLength (f)
+float
+200.0 mm
+Effective focal length of the collimating lens used in paraxial ray calculations.
+VialDistance
+float
+50.0 mm
+Optical distance between the collimation lens and the reaction vial.
+NumSampleRays (N)
+int
+32
+Discretization count for boundary ray tracing and loft curve generation.
+Comparison: GhPython vs. C# vs. C++
+Feature
+GhPython (IronPython / CPython)
+Grasshopper C# (Grasshopper.Kernel)
+Native C++ (Rhino C++ SDK)
+Execution Performance
+Interpreted/JIT via DLR. Iteration over ray loops and curve evaluations incurs dynamic type lookup overhead. Slowest.
+Compiled directly to Common Intermediate Language (CIL). Executes ray math and loop transformations 10×–30× faster than Python.
+Compiled to native x86-64 machine code. Directly evaluates OpenNURBS geometry without managed runtime overhead. Fastest.
+Memory & Garbage Collection
+High memory allocation due to dynamic object wrapping (PyObject ↔ .NET wrapper). GC pressure during continuous slider updates.
+Efficient managed memory allocation. Direct interaction with .NET garbage collector without cross-runtime translation layers.
+Manual deterministic memory management (ON_Brep, pointers, heap/stack control). Zero garbage collection pauses during geometry computation.
+RhinoCommon / API Access
+Accesses RhinoCommon via dynamic reflection. Misses compile-time checks; typos fail at runtime.
+Native first-class consumer of RhinoCommon. Direct method calling, explicit casting, and inline documentation tooling.
+Uses the native OpenNURBS and Rhino C++ SDK directly. Provides low-level geometric routines not exposed in RhinoCommon.
+Code Verbosity & Dynamic Resolving
+Requires runtime defensive reflection (globals(), resolve_brep, hasattr) to handle ambiguous Grasshopper inputs.
+Type-safe input parameters defined in RegisterInputParams. Eliminates dynamic variable inspection functions.
+High boilerplate: requires class declarations, explicit memory deallocation, and platform compilation setup.
+Development Cycle & Deployment
+Rapid prototyping. Editable directly inside the Grasshopper document canvas with instant feedback.
+Can be written directly in the GH C# component or compiled into a .gha assembly via Visual Studio.
+Cannot be embedded directly into canvas nodes. Requires compiling an external .rhp plugin with a C++/CLI or P/Invoke bridge to Grasshopper.
+speed comaprison of different language which CAN be natively used nby grasshopper
+Language / Environment
+Implementation
+Typical Execution Speed Relative to C#
+RhinoCommon Interop Overhead
+Multithreading Support
+C#
+Compiled to .NET CIL (Roslyn / JIT)
+1.0x (Baseline — Fastest)
+None (Native .NET to .NET)
+Native (Parallel.For, Tasks)
+VB.NET
+Compiled to .NET CIL
+1.0x (Identical to C#)
+None (Native .NET to .NET)
+Native (Parallel.For, Tasks)
+IronPython 2.7
+Dynamic Language Runtime (DLR)
+10x – 50x slower
+Moderate (DLR dynamic reflection)
+Partial (DLR lock limitations)
+CPython 3.x (Rhino 8)
+Native CPython via Python.NET bridge
+5x – 30x slower (RhinoCommon calls)
+0.5x – 2x faster (NumPy/SciPy vectorized)
+High (C-API to .NET marshaling)
+GIL constrained (Process-based or native C threads only)
+Detailed Mechanics
+1. C# (Native Script Component)
+Execution Model: Code is compiled directly into Common Intermediate Language (CIL) at runtime and executed by the .NET JIT compiler.
+RhinoCommon Binding: Zero marshaling overhead. RhinoCommon is a managed .NET wrapper around native C++ OpenNURBS; C# accesses these pointers directly.
+Loop Efficiency: Tight loops performing point math, array transformations, or vector projections run at near-native C++ performance.
+Parallel Processing: Direct support for System.Threading.Tasks.Parallel.For and PLINQ allows linear scaling across CPU cores for geometric intersections and ray tracing.
+2. VB.NET (Legacy Script Component)
+Execution Model: Compiles down to the exact same CIL instructions as C#.
+Performance: Execution profile matches C# within margin of error for numeric calculations and geometric modeling.
+Drawback: Deprecated in active Grasshopper development; no performance benefit over C#.
+3. IronPython 2.7 (Default in Rhino 6/7, Legacy in Rhino 8)
+Execution Model: Interpreted through the Dynamic Language Runtime (DLR) on top of the .NET CLR.
+Bottleneck: Every object lookup, method call, and numeric operation performs runtime type checks and dynamic dispatch.
+RhinoCommon Interop: Passing primitive types or arrays (such as lists of Point3d) creates overhead converting between Python dynamic types and .NET types.
+Use Profile: Suitable for pipeline orchestration; unsuitable for iterative ray-bounce loops, voxelization, or thousands of Brep face evaluations.
+4. CPython 3.x (Rhino 8 Script Component / Rhino.Code)
+Execution Model: Standard native CPython runtime connected to the Rhino process via Python.NET (pythonnet).
+Interoperability Cost: Each call to a Rhino.Geometry method crosses the C-extension boundary into the .NET CLR. For fine-grained per-vertex or per-ray loops, this interop overhead makes CPython significantly slower than pure C# and occasionally slower than IronPython.
+Vectorization Advantage: When geometric operations can be cast into NumPy arrays, SciPy spatial trees (KDTree), or PyTorch tensors, computation executes in compiled native C/Fortran libraries, bypassing both the Python interpreter and the .NET runtime.
+shall we rewrite the pythion code in C# then?
+C#
+#region Usings using System; using System.Collections.Generic; using System.Linq; using Rhino; using Rhino.Geometry; using Rhino.Geometry.Intersect; #endregion public class Script_Instance : GH_ScriptInstance { private void RunScript( Point3d ProjectorPt, Brep LensBrep, Plane ProjectorPlane, double Distance_D, double Offset_Hd, double Width, double Height, Brep ConeBrep, double FocalLength, double VialDistance, int NumSampleRays, ref object IncidentCone, ref object CollimatedBeam, ref object LensFootprint, ref object RayLines, ref object Info) { // --------------------------------------------------------------------- // 1. Defaults & Tolerances // --------------------------------------------------------------------- double dThrow = (Distance_D > 0) ? Distance_D : 4050.0; double hOffset = (Offset_Hd != 0) ? Offset_Hd : 93.0; double w = (Width > 0) ? Width : 3320.0; double h = (Height > 0) ? Height : 1870.0; double f = (FocalLength > 0) ? FocalLength : 200.0; double vDist = (VialDistance > 0) ? VialDistance : 50.0; int nRays = (NumSampleRays > 2) ? NumSampleRays : 32; double tol = (RhinoDoc.ActiveDoc != null && RhinoDoc.ActiveDoc.ModelAbsoluteTolerance > 0) ? RhinoDoc.ActiveDoc.ModelAbsoluteTolerance : 0.01; tol = Math.Max(tol, 0.001); if (!ProjectorPt.IsValid || LensBrep == null || !LensBrep.IsValid) return; // --------------------------------------------------------------------- // 2. Generate Projection Frustum (Optoma Cluster Replacement) // --------------------------------------------------------------------- Brep activeCone = ConeBrep; if (activeCone == null || !activeCone.IsValid) { Plane screenPlane; if (!ProjectorPlane.IsValid) { // Optical throw along +Y, vertical offset along +Z Point3d targetPt = ProjectorPt + new Vector3d(0.0, dThrow, hOffset); screenPlane = new Plane(targetPt, Vector3d.XAxis, Vector3d.ZAxis); } else { Point3d targetPt = ProjectorPt + (ProjectorPlane.ZAxis * dThrow) + (ProjectorPlane.YAxis * hOffset); screenPlane = new Plane(targetPt, ProjectorPlane.XAxis, ProjectorPlane.YAxis); } Interval xDom = new Interval(-w * 0.5, w * 0.5); Interval yDom = new Interval(-h * 0.5, h * 0.5); Rectangle3d rect = new Rectangle3d(screenPlane, xDom, yDom); Point3d c0 = rect.Corner(0); Point3d c1 = rect.Corner(1); Point3d c2 = rect.Corner(2); Point3d c3 = rect.Corner(3); List<Brep> pyramidFaces = new List<Brep> { Brep.CreateFromCornerPoints(ProjectorPt, c0, c1, tol), Brep.CreateFromCornerPoints(ProjectorPt, c1, c2, tol), Brep.CreateFromCornerPoints(ProjectorPt, c2, c3, tol), Brep.CreateFromCornerPoints(ProjectorPt, c3, c0, tol), Brep.CreateFromCornerPoints(c0, c1, c2, c3, tol) }; Brep[] joined = Brep.JoinBreps(pyramidFaces.Where(face => face != null), tol); if (joined != null && joined.Length > 0) activeCone = joined[0]; } if (activeCone == null || !activeCone.IsValid) return; // --------------------------------------------------------------------- // 3. Locate Front Lens Face // --------------------------------------------------------------------- BrepFace frontFace = null; double minDist = double.MaxValue; foreach (BrepFace face in LensBrep.Faces) { double um = (face.Domain(0).Min + face.Domain(0).Max) * 0.5; double vm = (face.Domain(1).Min + face.Domain(1).Max) * 0.5; Point3d ptF = face.PointAt(um, vm); double dist = ptF.DistanceTo(ProjectorPt); if (dist < minDist) { minDist = dist; frontFace = face; } } if (frontFace == null) return; AreaMassProperties amp = AreaMassProperties.Compute(frontFace); double uc = (frontFace.Domain(0).Min + frontFace.Domain(0).Max) * 0.5; double vc = (frontFace.Domain(1).Min + frontFace.Domain(1).Max) * 0.5; Point3d lensCenter = (amp != null) ? amp.Centroid : frontFace.PointAt(uc, vc); Vector3d lensNormal = frontFace.NormalAt(uc, vc); if ((lensNormal * (lensCenter - ProjectorPt)) < 0) lensNormal.Reverse(); lensNormal.Unitize(); // --------------------------------------------------------------------- // 4. Intersect Frustum with Lens Face (Footprint) // --------------------------------------------------------------------- Brep faceBrep = frontFace.DuplicateFace(false); Curve[] intCrvs; Point3d[] intPts; Curve footprint = null; if (Intersection.BrepBrep(activeCone, faceBrep, tol, out intCrvs, out intPts) && intCrvs != null && intCrvs.Length > 0) { Curve[] joined = Curve.JoinCurves(intCrvs, tol); if (joined != null && joined.Length > 0) footprint = joined[0]; } // Fallback Boolean intersection if (footprint == null) { Brep[] boolRes = Brep.CreateBooleanIntersection(activeCone, LensBrep, tol); if (boolRes != null && boolRes.Length > 0) { Curve[] edges = boolRes[0].DuplicateEdgeCurves(true); Curve[] joined = Curve.JoinCurves(edges, tol); if (joined != null && joined.Length > 0) footprint = joined[0]; } } if (footprint == null) return; if (!footprint.IsClosed) footprint.MakeClosed(tol); LensFootprint = footprint; // --------------------------------------------------------------------- // 5. Truncate Incident Cone to Lens Surface // --------------------------------------------------------------------- Brep[] incLofts = Brep.CreateFromLoft( new Curve[] { footprint }, ProjectorPt, Point3d.Unset, LoftType.Normal, false ); if (incLofts != null && incLofts.Length > 0) IncidentCone = incLofts[0].CapPlanarHoles(tol); // --------------------------------------------------------------------- // 6. Paraxial Ray Bending & Collimated Solid // --------------------------------------------------------------------- double[] tParams = footprint.DivideByCount(nRays, true); if (tParams == null || tParams.Length == 0) return; List<Point3d> ptsVial = new List<Point3d>(tParams.Length); List<Line> lines = new List<Line>(tParams.Length * 2); List<double> angles = new List<double>(tParams.Length); for (int i = 0; i < tParams.Length; i++) { Point3d pLens = footprint.PointAt(tParams[i]); Vector3d vIn = pLens - ProjectorPt; double dAxis = vIn * lensNormal; Vector3d vInTrans = vIn - lensNormal * dAxis; Vector3d dr = pLens - lensCenter; Vector3d drTrans = dr - lensNormal * (dr * lensNormal); double dSafe = Math.Max(dAxis, 1e-6); double fSafe = Math.Max(f, 1e-6); Vector3d vOutTrans = (vInTrans * (1.0 / dSafe)) - (drTrans * (1.0 / fSafe)); Vector3d vOut = lensNormal + vOutTrans; vOut.Unitize(); Point3d pVial = pLens + (vOut * vDist); ptsVial.Add(pVial); lines.Add(new Line(ProjectorPt, pLens)); lines.Add(new Line(pLens, pVial)); double dot = Math.Max(-1.0, Math.Min(1.0, vOut * lensNormal)); angles.Add(Math.Acos(dot) * (180.0 / Math.PI)); } Curve vialCrv = Curve.CreateInterpolatedCurve(ptsVial, 3); if (vialCrv != null) { if (!vialCrv.IsClosed) vialCrv.MakeClosed(tol); Brep[] lofts = Brep.CreateFromLoft( new Curve[] { footprint, vialCrv }, Point3d.Unset, Point3d.Unset, LoftType.Normal, false ); if (lofts != null && lofts.Length > 0) CollimatedBeam = lofts[0].CapPlanarHoles(tol); } RayLines = lines; double avgA = (angles.Count > 0) ? angles.Average() : 0.0; Info = new List<string> { string.Format("Distance Projector to Lens: {0:F2} mm", lensCenter.DistanceTo(ProjectorPt)), string.Format("Avg Angle After Lens: {0:F3} deg (0.0 = telecentric)", avgA), (avgA < 1.0) ? "Status: COLLIMATED" : "Status: DIVERGING / CONVERGING" }; } }
+Component Parameter Setup
+Parameter Name
+Direction
+Type Hint
+Access
+Description
+ProjectorPt
+Input
+Point3d
+Item
+Projector lens emission apex
+LensBrep
+Input
+Brep
+Item
+Lens polysurface
+ProjectorPlane
+Input
+Plane
+Item
+Optional projector orientation plane
+Distance_D
+Input
+double
+Item
+Throw distance (e.g., 4050.0)
+Offset_Hd
+Input
+double
+Item
+Vertical shift (e.g., 93.0)
+Width
+Input
+double
+Item
+Projected screen width (e.g., 3320.0)
+Height
+Input
+double
+Item
+Projected screen height (e.g., 1870.0)
+ConeBrep
+Input
+Brep
+Item
+Optional pre-existing frustum Brep override
+FocalLength
+Input
+double
+Item
+Lens focal length (e.g., 200.0)
+VialDistance
+Input
+double
+Item
+Distance from lens to vial (e.g., 50.0)
+NumSampleRays
+Input
+int
+Item
+Discretization ray count (e.g., 32)
+IncidentCone
+Output
+Generic
+Item
+Solid cone truncated at lens front surface
+CollimatedBeam
+Output
+Generic
+Item
+Collimated solid beam volume
+LensFootprint
+Output
+Generic
+Item
+2D/3D intersection curve on lens face
+RayLines
+Output
+Generic
+List
+Visual rays (Projector->Lens and Lens->Vial)
+Info
+Output
+Generic
+List
+Diagnostic optical stats
+can this code seimilar ro python get ANY typhint from the components? or not?
+Yes.
+By setting the input pin's Type Hint to "No Type Hint" in Grasshopper, the input parameter in the RunScript method defaults to object. You can then cast, inspect GUIDs, and resolve Grasshopper Goo or RhinoCommon types at runtime inside C# using pattern matching.
+C# Untyped RunScript Signature
+C#
+private void RunScript( object ProjectorPt, object LensBrep, object ProjectorPlane, object Distance_D, object Offset_Hd, object Width, object Height, object ConeBrep, object FocalLength, object VialDistance, object NumSampleRays, ref object IncidentCone, ref object CollimatedBeam, ref object LensFootprint, ref object RayLines, ref object Info)
+C# Runtime Resolvers for object Inputs
+C#
+// -------------------------------------------------------------------------- // Resolvers for "No Type Hint" (object) // -------------------------------------------------------------------------- public Point3d ResolvePoint(object obj) { if (obj == null) return Point3d.Unset; if (obj is Point3d pt) return pt; if (obj is Grasshopper.Kernel.Types.GH_Point ghPt) return ghPt.Value; if (obj is Guid id) { var docObj = RhinoDoc.ActiveDoc?.Objects.FindId(id); if (docObj?.Geometry is Rhino.Geometry.Point p) return p.Location; } return Point3d.Unset; } public Brep ResolveBrep(object obj) { if (obj == null) return null; if (obj is Brep b) return b; if (obj is Surface s) return s.ToBrep(); if (obj is Grasshopper.Kernel.Types.GH_Brep ghBrep) return ghBrep.Value; if (obj is Grasshopper.Kernel.Types.GH_Surface ghSrf) return ghSrf.Value.ToBrep(); if (obj is Guid id) { var docObj = RhinoDoc.ActiveDoc?.Objects.FindId(id); if (docObj?.Geometry is Brep docBrep) return docBrep; if (docObj?.Geometry is Surface docSrf) return docSrf.ToBrep(); } return null; } public Plane ResolvePlane(object obj) { if (obj == null) return Plane.Unset; if (obj is Plane pl) return pl; if (obj is Grasshopper.Kernel.Types.GH_Plane ghPl) return ghPl.Value; return Plane.Unset; } public double ResolveDouble(object obj, double defaultValue) { if (obj == null) return defaultValue; if (obj is double d) return d; if (obj is float f) return (double)f; if (obj is int i) return (double)i; if (obj is Grasshopper.Kernel.Types.GH_Number ghNum) return ghNum.Value; if (obj is Grasshopper.Kernel.Types.GH_Integer ghInt) return (double)ghInt.Value; if (double.TryParse(obj.ToString(), out double parsed)) return parsed; return defaultValue; }
+Usage Inside RunScript
+C#
+Point3d pPt = ResolvePoint(ProjectorPt); Brep lBrep = ResolveBrep(LensBrep); Plane pPlane = ResolvePlane(ProjectorPlane); Brep cBrep = ResolveBrep(ConeBrep); double dThrow = ResolveDouble(Distance_D, 4050.0); double hOffset = ResolveDouble(Offset_Hd, 93.0); double w = ResolveDouble(Width, 3320.0); double h = ResolveDouble(Height, 1870.0); double f = ResolveDouble(FocalLength, 200.0); double vDist = ResolveDouble(VialDistance, 50.0); int nRays = (int)ResolveDouble(NumSampleRays, 32.0);
+Using object introduces runtime type checking and boxing/unboxing overhead, but retains standard C# execution speed during loops, vector arithmetic, and RhinoCommon geometry operations.
+why we need a cone brep if we now do make the cone brep>? also why we need the focal length? is if the one from the dataheet of the lens or the distance bettwen the projector's lense and the lense? if second we can easekly calcualte it
+1. Why ConeBrep is Redundant
+ConeBrep is no longer needed. It was retained solely as an optional override for backwards compatibility with your original Grasshopper cluster.
+Since the C# script now generates the projection pyramid directly from Distance_D, Offset_Hd, Width, and Height, delete the ConeBrep input parameter entirely.
+2. What FocalLength Is and Why It Cannot Be Calculated from Distance
+FocalLength (f) is the intrinsic optical focal length from the lens datasheet (e.g., of the Fresnel or plano-convex collimating lens), not the physical distance between the projector and the lens.
+The script already computes the physical distance automatically from geometry:
+daxis=vin⋅n^
+The script requires both parameters independently to model refraction via the paraxial thin-lens formula:
+vout,⊥=daxisvin,⊥−fΔr⊥
+daxisvin,⊥: Represents the geometric divergence of the ray exiting the projector pupil at the measured physical distance daxis.
+−fΔr⊥: Represents the optical bending power (P=f1) applied by the glass/plastic at distance Δr⊥ from the lens optical axis.
+If the lens focal length f were replaced with the measured distance daxis, the term daxis1−daxis1 would always equal zero, forcing the output to falsely report perfect collimation (vout,⊥=0) regardless of where the projector is physically placed. To verify whether your physical setup achieves telecentricity, the script must compare the measured distance against the fixed datasheet focal length f. Collimation only occurs when the physical distance matches f.
+Cleaned C# Code (Removed ConeBrep)
+C#
+#region Usings using System; using System.Collections.Generic; using System.Linq; using Rhino; using Rhino.Geometry; using Rhino.Geometry.Intersect; #endregion public class Script_Instance : GH_ScriptInstance { private void RunScript( Point3d ProjectorPt, Brep LensBrep, Plane ProjectorPlane, double Distance_D, double Offset_Hd, double Width, double Height, double FocalLength, double VialDistance, int NumSampleRays, ref object IncidentCone, ref object CollimatedBeam, ref object LensFootprint, ref object RayLines, ref object Info) { double dThrow = (Distance_D > 0) ? Distance_D : 4050.0; double hOffset = (Offset_Hd != 0) ? Offset_Hd : 93.0; double w = (Width > 0) ? Width : 3320.0; double h = (Height > 0) ? Height : 1870.0; double f = (FocalLength > 0) ? FocalLength : 200.0; double vDist = (VialDistance > 0) ? VialDistance : 50.0; int nRays = (NumSampleRays > 2) ? NumSampleRays : 32; double tol = (RhinoDoc.ActiveDoc != null && RhinoDoc.ActiveDoc.ModelAbsoluteTolerance > 0) ? RhinoDoc.ActiveDoc.ModelAbsoluteTolerance : 0.01; tol = Math.Max(tol, 0.001); if (!ProjectorPt.IsValid || LensBrep == null || !LensBrep.IsValid) return; // 1. Build Projection Frustum Plane screenPlane; if (!ProjectorPlane.IsValid) { Point3d targetPt = ProjectorPt + new Vector3d(0.0, dThrow, hOffset); screenPlane = new Plane(targetPt, Vector3d.XAxis, Vector3d.ZAxis); } else { Point3d targetPt = ProjectorPt + (ProjectorPlane.ZAxis * dThrow) + (ProjectorPlane.YAxis * hOffset); screenPlane = new Plane(targetPt, ProjectorPlane.XAxis, ProjectorPlane.YAxis); } Interval xDom = new Interval(-w * 0.5, w * 0.5); Interval yDom = new Interval(-h * 0.5, h * 0.5); Rectangle3d rect = new Rectangle3d(screenPlane, xDom, yDom); Point3d c0 = rect.Corner(0); Point3d c1 = rect.Corner(1); Point3d c2 = rect.Corner(2); Point3d c3 = rect.Corner(3); List<Brep> pyramidFaces = new List<Brep> { Brep.CreateFromCornerPoints(ProjectorPt, c0, c1, tol), Brep.CreateFromCornerPoints(ProjectorPt, c1, c2, tol), Brep.CreateFromCornerPoints(ProjectorPt, c2, c3, tol), Brep.CreateFromCornerPoints(ProjectorPt, c3, c0, tol), Brep.CreateFromCornerPoints(c0, c1, c2, c3, tol) }; Brep[] joined = Brep.JoinBreps(pyramidFaces.Where(face => face != null), tol); if (joined == null || joined.Length == 0) return; Brep activeCone = joined[0]; // 2. Identify Lens Front Face BrepFace frontFace = null; double minDist = double.MaxValue; foreach (BrepFace face in LensBrep.Faces) { double um = (face.Domain(0).Min + face.Domain(0).Max) * 0.5; double vm = (face.Domain(1).Min + face.Domain(1).Max) * 0.5; Point3d ptF = face.PointAt(um, vm); double dist = ptF.DistanceTo(ProjectorPt); if (dist < minDist) { minDist = dist; frontFace = face; } } if (frontFace == null) return; AreaMassProperties amp = AreaMassProperties.Compute(frontFace); double uc = (frontFace.Domain(0).Min + frontFace.Domain(0).Max) * 0.5; double vc = (frontFace.Domain(1).Min + frontFace.Domain(1).Max) * 0.5; Point3d lensCenter = (amp != null) ? amp.Centroid : frontFace.PointAt(uc, vc); Vector3d lensNormal = frontFace.NormalAt(uc, vc); if ((lensNormal * (lensCenter - ProjectorPt)) < 0) lensNormal.Reverse(); lensNormal.Unitize(); // 3. Intersect Frustum with Lens Front Face Brep faceBrep = frontFace.DuplicateFace(false); Curve[] intCrvs; Point3d[] intPts; Curve footprint = null; if (Intersection.BrepBrep(activeCone, faceBrep, tol, out intCrvs, out intPts) && intCrvs != null && intCrvs.Length > 0) { Curve[] joinedCrvs = Curve.JoinCurves(intCrvs, tol); if (joinedCrvs != null && joinedCrvs.Length > 0) footprint = joinedCrvs[0]; } if (footprint == null) { Brep[] boolRes = Brep.CreateBooleanIntersection(activeCone, LensBrep, tol); if (boolRes != null && boolRes.Length > 0) { Curve[] edges = boolRes[0].DuplicateEdgeCurves(true); Curve[] joinedEdges = Curve.JoinCurves(edges, tol); if (joinedEdges != null && joinedEdges.Length > 0) footprint = joinedEdges[0]; } } if (footprint == null) return; if (!footprint.IsClosed) footprint.MakeClosed(tol); LensFootprint = footprint; // 4. Truncated Incident Beam Brep[] incLofts = Brep.CreateFromLoft( new Curve[] { footprint }, ProjectorPt, Point3d.Unset, LoftType.Normal, false ); if (incLofts != null && incLofts.Length > 0) IncidentCone = incLofts[0].CapPlanarHoles(tol); // 5. Ray Deflection and Collimation double[] tParams = footprint.DivideByCount(nRays, true); if (tParams == null || tParams.Length == 0) return; List<Point3d> ptsVial = new List<Point3d>(tParams.Length); List<Line> lines = new List<Line>(tParams.Length * 2); List<double> angles = new List<double>(tParams.Length); for (int i = 0; i < tParams.Length; i++) { Point3d pLens = footprint.PointAt(tParams[i]); Vector3d vIn = pLens - ProjectorPt; double dAxis = vIn * lensNormal; Vector3d vInTrans = vIn - lensNormal * dAxis; Vector3d dr = pLens - lensCenter; Vector3d drTrans = dr - lensNormal * (dr * lensNormal); double dSafe = Math.Max(dAxis, 1e-6); double fSafe = Math.Max(f, 1e-6); Vector3d vOutTrans = (vInTrans * (1.0 / dSafe)) - (drTrans * (1.0 / fSafe)); Vector3d vOut = lensNormal + vOutTrans; vOut.Unitize(); Point3d pVial = pLens + (vOut * vDist); ptsVial.Add(pVial); lines.Add(new Line(ProjectorPt, pLens)); lines.Add(new Line(pLens, pVial)); double dot = Math.Max(-1.0, Math.Min(1.0, vOut * lensNormal)); angles.Add(Math.Acos(dot) * (180.0 / Math.PI)); } Curve vialCrv = Curve.CreateInterpolatedCurve(ptsVial, 3); if (vialCrv != null) { if (!vialCrv.IsClosed) vialCrv.MakeClosed(tol); Brep[] lofts = Brep.CreateFromLoft( new Curve[] { footprint, vialCrv }, Point3d.Unset, Point3d.Unset, LoftType.Normal, false ); if (lofts != null && lofts.Length > 0) CollimatedBeam = lofts[0].CapPlanarHoles(tol); } RayLines = lines; double avgA = (angles.Count > 0) ? angles.Average() : 0.0; Info = new List<string> { string.Format("Distance Projector to Lens: {0:F2} mm", lensCenter.DistanceTo(ProjectorPt)), string.Format("Datasheet Focal Length: {0:F2} mm", f), string.Format("Avg Angle After Lens: {0:F3} deg (0.0 = telecentric)", avgA), (avgA < 1.0) ? "Status: COLLIMATED" : "Status: DIVERGING / CONVERGING" }; } }
+it dose not work? shall we add debuggin prints?
+Replace the C# script with the following instrumentation. It removes silent return statements, outputs execution traces to both the out console (Print) and the Info output pin, and passes activeCone to IncidentCone if the intersection fails so the spatial alignment can be inspected in the Rhino viewport.
+C#
+#region Usings using System; using System.Collections.Generic; using System.Linq; using Rhino; using Rhino.Geometry; using Rhino.Geometry.Intersect; #endregion public class Script_Instance : GH_ScriptInstance { private void RunScript( Point3d ProjectorPt, Brep LensBrep, Plane ProjectorPlane, double Distance_D, double Offset_Hd, double Width, double Height, double FocalLength, double VialDistance, int NumSampleRays, ref object IncidentCone, ref object CollimatedBeam, ref object LensFootprint, ref object RayLines, ref object Info) { List<string> log = new List<string>(); void Log(string msg) { log.Add(msg); Print(msg); } // --------------------------------------------------------------------- // 1. Validate Inputs & Apply Fallbacks // --------------------------------------------------------------------- Log("=== EXECUTION START ==="); if (!ProjectorPt.IsValid) { Log("ERROR: ProjectorPt is unset or invalid."); Info = log; return; } Log(string.Format("ProjectorPt: {0:F2}, {1:F2}, {2:F2}", ProjectorPt.X, ProjectorPt.Y, ProjectorPt.Z)); if (LensBrep == null || !LensBrep.IsValid) { Log("ERROR: LensBrep is null or invalid geometry."); Info = log; return; } BoundingBox lensBox = LensBrep.GetBoundingBox(true); Log(string.Format("LensBrep: Valid ({0} faces). BBox Center: {1:F2}, {2:F2}, {3:F2}", LensBrep.Faces.Count, lensBox.Center.X, lensBox.Center.Y, lensBox.Center.Z)); double dThrow = (Distance_D > 0) ? Distance_D : 4050.0; double hOffset = (Offset_Hd != 0) ? Offset_Hd : 93.0; double w = (Width > 0) ? Width : 3320.0; double h = (Height > 0) ? Height : 1870.0; double f = (FocalLength > 0) ? FocalLength : 200.0; double vDist = (VialDistance > 0) ? VialDistance : 50.0; int nRays = (NumSampleRays > 2) ? NumSampleRays : 32; double tol = (RhinoDoc.ActiveDoc != null && RhinoDoc.ActiveDoc.ModelAbsoluteTolerance > 0) ? RhinoDoc.ActiveDoc.ModelAbsoluteTolerance : 0.01; tol = Math.Max(tol, 0.001); Log(string.Format("Params: D={0}, Hd={1}, W={2}, H={3}, f={4}, Rays={5}", dThrow, hOffset, w, h, f, nRays)); // --------------------------------------------------------------------- // 2. Build Frustum Geometry // --------------------------------------------------------------------- Plane screenPlane; if (!ProjectorPlane.IsValid) { Log("WARNING: ProjectorPlane is unset. Defaulting throw along World +Y, shift along World +Z."); Point3d targetPt = ProjectorPt + new Vector3d(0.0, dThrow, hOffset); screenPlane = new Plane(targetPt, Vector3d.XAxis, Vector3d.ZAxis); } else { Log("ProjectorPlane: Valid custom plane provided."); Point3d targetPt = ProjectorPt + (ProjectorPlane.ZAxis * dThrow) + (ProjectorPlane.YAxis * hOffset); screenPlane = new Plane(targetPt, ProjectorPlane.XAxis, ProjectorPlane.YAxis); } Interval xDom = new Interval(-w * 0.5, w * 0.5); Interval yDom = new Interval(-h * 0.5, h * 0.5); Rectangle3d rect = new Rectangle3d(screenPlane, xDom, yDom); Point3d c0 = rect.Corner(0); Point3d c1 = rect.Corner(1); Point3d c2 = rect.Corner(2); Point3d c3 = rect.Corner(3); List<Brep> pyramidFaces = new List<Brep> { Brep.CreateFromCornerPoints(ProjectorPt, c0, c1, tol), Brep.CreateFromCornerPoints(ProjectorPt, c1, c2, tol), Brep.CreateFromCornerPoints(ProjectorPt, c2, c3, tol), Brep.CreateFromCornerPoints(ProjectorPt, c3, c0, tol), Brep.CreateFromCornerPoints(c0, c1, c2, c3, tol) }; Brep[] joined = Brep.JoinBreps(pyramidFaces.Where(face => face != null), tol); if (joined == null || joined.Length == 0) { Log("ERROR: Failed to join frustum Brep faces."); Info = log; return; } Brep activeCone = joined[0]; BoundingBox coneBox = activeCone.GetBoundingBox(true); Log("ConeBrep: Synthesized successfully."); // --------------------------------------------------------------------- // 3. Check Spatial Overlap & Front Face Detection // --------------------------------------------------------------------- bool boxesOverlap = BoundingBox.Intersection(coneBox, lensBox).IsValid; Log(string.Format("Bounding Box Collision (Cone vs Lens): {0}", boxesOverlap ? "TRUE" : "FALSE (Spatial Misalignment)")); BrepFace frontFace = null; double minDist = double.MaxValue; foreach (BrepFace face in LensBrep.Faces) { double um = (face.Domain(0).Min + face.Domain(0).Max) * 0.5; double vm = (face.Domain(1).Min + face.Domain(1).Max) * 0.5; Point3d ptF = face.PointAt(um, vm); double dist = ptF.DistanceTo(ProjectorPt); if (dist < minDist) { minDist = dist; frontFace = face; } } if (frontFace == null) { Log("ERROR: Could not isolate front face on LensBrep."); IncidentCone = activeCone; Info = log; return; } AreaMassProperties amp = AreaMassProperties.Compute(frontFace); double uc = (frontFace.Domain(0).Min + frontFace.Domain(0).Max) * 0.5; double vc = (frontFace.Domain(1).Min + frontFace.Domain(1).Max) * 0.5; Point3d lensCenter = (amp != null) ? amp.Centroid : frontFace.PointAt(uc, vc); Vector3d lensNormal = frontFace.NormalAt(uc, vc); if ((lensNormal * (lensCenter - ProjectorPt)) < 0) lensNormal.Reverse(); lensNormal.Unitize(); Log(string.Format("Front Face found. Distance to pupil: {0:F2} mm", lensCenter.DistanceTo(ProjectorPt))); // --------------------------------------------------------------------- // 4. Surface Intersection // --------------------------------------------------------------------- Brep faceBrep = frontFace.DuplicateFace(false); Curve[] intCrvs; Point3d[] intPts; Curve footprint = null; bool intersectSuccess = Intersection.BrepBrep(activeCone, faceBrep, tol, out intCrvs, out intPts); Log(string.Format("Brep-Face Intersection: {0} (Curves found: {1})", intersectSuccess, (intCrvs != null) ? intCrvs.Length : 0)); if (intersectSuccess && intCrvs != null && intCrvs.Length > 0) { Curve[] joinedCrvs = Curve.JoinCurves(intCrvs, tol); if (joinedCrvs != null && joinedCrvs.Length > 0) footprint = joinedCrvs[0]; } if (footprint == null) { Log("Attempting fallback: Brep.CreateBooleanIntersection(activeCone, LensBrep)..."); Brep[] boolRes = Brep.CreateBooleanIntersection(activeCone, LensBrep, tol); if (boolRes != null && boolRes.Length > 0) { Curve[] edges = boolRes[0].DuplicateEdgeCurves(true); Curve[] joinedEdges = Curve.JoinCurves(edges, tol); if (joinedEdges != null && joinedEdges.Length > 0) { footprint = joinedEdges[0]; Log("Fallback Boolean intersection succeeded."); } } } if (footprint == null) { Log("FAILED: No geometric intersection between projection cone and lens."); Log("ACTION: Check 'ProjectorPlane' input. The cone is currently aiming along World +Y and missing the lens."); IncidentCone = activeCone; // Expose full cone to viewport for visual debugging Info = log; return; } if (!footprint.IsClosed) footprint.MakeClosed(tol); LensFootprint = footprint; Log("Footprint extracted and closed."); // --------------------------------------------------------------------- // 5. Build Truncated Incident Cone // --------------------------------------------------------------------- Brep[] incLofts = Brep.CreateFromLoft( new Curve[] { footprint }, ProjectorPt, Point3d.Unset, LoftType.Normal, false ); if (incLofts != null && incLofts.Length > 0) { IncidentCone = incLofts[0].CapPlanarHoles(tol); Log("Incident cone truncated at lens surface."); } // --------------------------------------------------------------------- // 6. Collimation & Ray Tracing // --------------------------------------------------------------------- double[] tParams = footprint.DivideByCount(nRays, true); if (tParams == null || tParams.Length == 0) { Log("ERROR: Failed to divide footprint curve."); Info = log; return; } List<Point3d> ptsVial = new List<Point3d>(tParams.Length); List<Line> lines = new List<Line>(tParams.Length * 2); List<double> angles = new List<double>(tParams.Length); for (int i = 0; i < tParams.Length; i++) { Point3d pLens = footprint.PointAt(tParams[i]); Vector3d vIn = pLens - ProjectorPt; double dAxis = vIn * lensNormal; Vector3d vInTrans = vIn - lensNormal * dAxis; Vector3d dr = pLens - lensCenter; Vector3d drTrans = dr - lensNormal * (dr * lensNormal); double dSafe = Math.Max(dAxis, 1e-6); double fSafe = Math.Max(f, 1e-6); Vector3d vOutTrans = (vInTrans * (1.0 / dSafe)) - (drTrans * (1.0 / fSafe)); Vector3d vOut = lensNormal + vOutTrans; vOut.Unitize(); Point3d pVial = pLens + (vOut * vDist); ptsVial.Add(pVial); lines.Add(new Line(ProjectorPt, pLens)); lines.Add(new Line(pLens, pVial)); double dot = Math.Max(-1.0, Math.Min(1.0, vOut * lensNormal)); angles.Add(Math.Acos(dot) * (180.0 / Math.PI)); } Curve vialCrv = Curve.CreateInterpolatedCurve(ptsVial, 3); if (vialCrv != null) { if (!vialCrv.IsClosed) vialCrv.MakeClosed(tol); Brep[] lofts = Brep.CreateFromLoft( new Curve[] { footprint, vialCrv }, Point3d.Unset, Point3d.Unset, LoftType.Normal, false ); if (lofts != null && lofts.Length > 0) CollimatedBeam = lofts[0].CapPlanarHoles(tol); } RayLines = lines; double avgA = (angles.Count > 0) ? angles.Average() : 0.0; Log(string.Format("Avg Exit Angle: {0:F3} deg", avgA)); Log((avgA < 1.0) ? "Status: COLLIMATED" : "Status: DIVERGING / CONVERGING"); Log("=== EXECUTION SUCCESS ==="); Info = log; } }
+I guess the plane for the cone to be generated was supplied insufgfienetly. I redo now
+To ensure the projection cone aligns with the tilted projector body, the input ProjectorPlane must match the following local axis conventions expected by the script:
+Axis Orientation Rules for ProjectorPlane
+Z-Axis (Normal / Optical Axis): Must point forward in the direction of projection (throw direction towards the lens).
+Y-Axis (Up Vector): Must point along the projector's vertical axis (direction of the lens shift Offset_Hd and screen Height).
+X-Axis (Right Vector): Must point along the projector's horizontal axis (screen Width).
+Origin: Must coincide with ProjectorPt (the optical pupil/lens center).
+Grasshopper Construction of ProjectorPlane
+If extracting the plane from the projector CAD model:
+Extract Lens Front Face: Deconstruct the projector Brep and isolate the planar emission circle/face on the front of the projector.
+Evaluate Face Plane: Connect the front face to a Face Normals or Evaluate Surface component evaluated at UV (0.5, 0.5) to get the center point and normal vector.
+Construct Plane (Plane Normal):
+Origin (O): Lens center point → feed to ProjectorPt.
+Z-Axis (Z): Surface normal pointing outwards into the room.
+Y-Axis (Y): Projector body "up" vector (cross product of local right and normal, or projector housing vertical edge).
+Feed into C# Component: Wire this constructed plane into ProjectorPlane.
+can we supply a vector instead?
+Yes. A direction vector (Vector3d) can replace ProjectorPlane. The coordinate plane is constructed by using the vector as the normal (optical axis) and establishing perpendicular screen axes relative to a reference up-vector (World Z).
+Plane Construction Logic from Vector
+C#
+// Normalize forward optical throw vector Vector3d fwd = ProjectorDir; if (!fwd.IsValid || fwd.IsZero) fwd = Vector3d.YAxis; // fallback fwd.Unitize(); // Determine up-vector reference (fallback to Y-axis if pointing along Z) Vector3d upRef = (Math.Abs(fwd * Vector3d.ZAxis) > 0.99) ? Vector3d.YAxis : Vector3d.ZAxis; // Compute orthogonal screen axes Vector3d right = Vector3d.CrossProduct(fwd, upRef); right.Unitize(); Vector3d up = Vector3d.CrossProduct(right, fwd); up.Unitize(); // Compute target center with throw distance and vertical lens shift Point3d targetPt = ProjectorPt + (fwd * dThrow) + (up * hOffset); Plane screenPlane = new Plane(targetPt, right, up);
+Updated C# Component
+Replace the ProjectorPlane input parameter with ProjectorDir (Type Hint: Vector3d).
+C#
+#region Usings using System; using System.Collections.Generic; using System.Linq; using Rhino; using Rhino.Geometry; using Rhino.Geometry.Intersect; #endregion public class Script_Instance : GH_ScriptInstance { private void RunScript( Point3d ProjectorPt, Vector3d ProjectorDir, Brep LensBrep, double Distance_D, double Offset_Hd, double Width, double Height, double FocalLength, double VialDistance, int NumSampleRays, ref object IncidentCone, ref object CollimatedBeam, ref object LensFootprint, ref object RayLines, ref object Info) { List<string> log = new List<string>(); void Log(string msg) { log.Add(msg); Print(msg); } Log("=== EXECUTION START ==="); if (!ProjectorPt.IsValid) { Log("ERROR: ProjectorPt is invalid."); Info = log; return; } if (LensBrep == null || !LensBrep.IsValid) { Log("ERROR: LensBrep is null or invalid."); Info = log; return; } double dThrow = (Distance_D > 0) ? Distance_D : 4050.0; double hOffset = (Offset_Hd != 0) ? Offset_Hd : 93.0; double w = (Width > 0) ? Width : 3320.0; double h = (Height > 0) ? Height : 1870.0; double f = (FocalLength > 0) ? FocalLength : 200.0; double vDist = (VialDistance > 0) ? VialDistance : 50.0; int nRays = (NumSampleRays > 2) ? NumSampleRays : 32; double tol = (RhinoDoc.ActiveDoc != null && RhinoDoc.ActiveDoc.ModelAbsoluteTolerance > 0) ? RhinoDoc.ActiveDoc.ModelAbsoluteTolerance : 0.01; tol = Math.Max(tol, 0.001); // --------------------------------------------------------------------- // 1. Orthonormal Screen Basis from Direction Vector // --------------------------------------------------------------------- Vector3d fwd = ProjectorDir; if (!fwd.IsValid || fwd.IsZero) { Log("WARNING: ProjectorDir is zero/invalid. Aiming directly at Lens centroid."); BoundingBox lb = LensBrep.GetBoundingBox(true); fwd = lb.Center - ProjectorPt; } fwd.Unitize(); Vector3d upRef = (Math.Abs(fwd * Vector3d.ZAxis) > 0.99) ? Vector3d.YAxis : Vector3d.ZAxis; Vector3d right = Vector3d.CrossProduct(fwd, upRef); right.Unitize(); Vector3d up = Vector3d.CrossProduct(right, fwd); up.Unitize(); Point3d targetPt = ProjectorPt + (fwd * dThrow) + (up * hOffset); Plane screenPlane = new Plane(targetPt, right, up); // --------------------------------------------------------------------- // 2. Synthesize Frustum // --------------------------------------------------------------------- Interval xDom = new Interval(-w * 0.5, w * 0.5); Interval yDom = new Interval(-h * 0.5, h * 0.5); Rectangle3d rect = new Rectangle3d(screenPlane, xDom, yDom); Point3d c0 = rect.Corner(0); Point3d c1 = rect.Corner(1); Point3d c2 = rect.Corner(2); Point3d c3 = rect.Corner(3); List<Brep> pyramidFaces = new List<Brep> { Brep.CreateFromCornerPoints(ProjectorPt, c0, c1, tol), Brep.CreateFromCornerPoints(ProjectorPt, c1, c2, tol), Brep.CreateFromCornerPoints(ProjectorPt, c2, c3, tol), Brep.CreateFromCornerPoints(ProjectorPt, c3, c0, tol), Brep.CreateFromCornerPoints(c0, c1, c2, c3, tol) }; Brep[] joined = Brep.JoinBreps(pyramidFaces.Where(p => p != null), tol); if (joined == null || joined.Length == 0) { Log("ERROR: Failed to join frustum Brep."); Info = log; return; } Brep activeCone = joined[0]; Log("Projection cone synthesized."); // --------------------------------------------------------------------- // 3. Locate Lens Front Face // --------------------------------------------------------------------- BrepFace frontFace = null; double minDist = double.MaxValue; foreach (BrepFace face in LensBrep.Faces) { double um = (face.Domain(0).Min + face.Domain(0).Max) * 0.5; double vm = (face.Domain(1).Min + face.Domain(1).Max) * 0.5; Point3d ptF = face.PointAt(um, vm); double dist = ptF.DistanceTo(ProjectorPt); if (dist < minDist) { minDist = dist; frontFace = face; } } if (frontFace == null) { Log("ERROR: Lens front face not found."); IncidentCone = activeCone; Info = log; return; } AreaMassProperties amp = AreaMassProperties.Compute(frontFace); double uc = (frontFace.Domain(0).Min + frontFace.Domain(0).Max) * 0.5; double vc = (frontFace.Domain(1).Min + frontFace.Domain(1).Max) * 0.5; Point3d lensCenter = (amp != null) ? amp.Centroid : frontFace.PointAt(uc, vc); Vector3d lensNormal = frontFace.NormalAt(uc, vc); if ((lensNormal * (lensCenter - ProjectorPt)) < 0) lensNormal.Reverse(); lensNormal.Unitize(); // --------------------------------------------------------------------- // 4. Intersect Frustum with Lens Face // --------------------------------------------------------------------- Brep faceBrep = frontFace.DuplicateFace(false); Curve[] intCrvs; Point3d[] intPts; Curve footprint = null; if (Intersection.BrepBrep(activeCone, faceBrep, tol, out intCrvs, out intPts) && intCrvs != null && intCrvs.Length > 0) { Curve[] joinedCrvs = Curve.JoinCurves(intCrvs, tol); if (joinedCrvs != null && joinedCrvs.Length > 0) footprint = joinedCrvs[0]; } if (footprint == null) { Brep[] boolRes = Brep.CreateBooleanIntersection(activeCone, LensBrep, tol); if (boolRes != null && boolRes.Length > 0) { Curve[] edges = boolRes[0].DuplicateEdgeCurves(true); Curve[] joinedEdges = Curve.JoinCurves(edges, tol); if (joinedEdges != null && joinedEdges.Length > 0) footprint = joinedEdges[0]; } } if (footprint == null) { Log("FAILED: No intersection. Cone misses lens."); IncidentCone = activeCone; Info = log; return; } if (!footprint.IsClosed) footprint.MakeClosed(tol); LensFootprint = footprint; // --------------------------------------------------------------------- // 5. Truncate Cone to Lens Face // --------------------------------------------------------------------- Brep[] incLofts = Brep.CreateFromLoft( new Curve[] { footprint }, ProjectorPt, Point3d.Unset, LoftType.Normal, false ); if (incLofts != null && incLofts.Length > 0) IncidentCone = incLofts[0].CapPlanarHoles(tol); // --------------------------------------------------------------------- // 6. Ray Bending & Collimation // --------------------------------------------------------------------- double[] tParams = footprint.DivideByCount(nRays, true); if (tParams == null || tParams.Length == 0) { Info = log; return; } List<Point3d> ptsVial = new List<Point3d>(tParams.Length); List<Line> lines = new List<Line>(tParams.Length * 2); List<double> angles = new List<double>(tParams.Length); for (int i = 0; i < tParams.Length; i++) { Point3d pLens = footprint.PointAt(tParams[i]); Vector3d vIn = pLens - ProjectorPt; double dAxis = vIn * lensNormal; Vector3d vInTrans = vIn - lensNormal * dAxis; Vector3d dr = pLens - lensCenter; Vector3d drTrans = dr - lensNormal * (dr * lensNormal); double dSafe = Math.Max(dAxis, 1e-6); double fSafe = Math.Max(f, 1e-6); Vector3d vOutTrans = (vInTrans * (1.0 / dSafe)) - (drTrans * (1.0 / fSafe)); Vector3d vOut = lensNormal + vOutTrans; vOut.Unitize(); Point3d pVial = pLens + (vOut * vDist); ptsVial.Add(pVial); lines.Add(new Line(ProjectorPt, pLens)); lines.Add(new Line(pLens, pVial)); double dot = Math.Max(-1.0, Math.Min(1.0, vOut * lensNormal)); angles.Add(Math.Acos(dot) * (180.0 / Math.PI)); } Curve vialCrv = Curve.CreateInterpolatedCurve(ptsVial, 3); if (vialCrv != null) { if (!vialCrv.IsClosed) vialCrv.MakeClosed(tol); Brep[] lofts = Brep.CreateFromLoft( new Curve[] { footprint, vialCrv }, Point3d.Unset, Point3d.Unset, LoftType.Normal, false ); if (lofts != null && lofts.Length > 0) CollimatedBeam = lofts[0].CapPlanarHoles(tol); } RayLines = lines; double avgA = (angles.Count > 0) ? angles.Average() : 0.0; Log(string.Format("Distance Projector to Lens: {0:F2} mm", lensCenter.DistanceTo(ProjectorPt))); Log(string.Format("Avg Exit Angle: {0:F3} deg", avgA)); Log((avgA < 1.0) ? "Status: COLLIMATED" : "Status: DIVERGING / CONVERGING"); Log("=== EXECUTION SUCCESS ==="); Info = log; } }
+help me understand
+originally I was giging a point ,the nthe cluster was doing a thing. how do Iget that vector? cuz then later Iapply several moves and transforms so my ides is to identify the original vector and then use the same trasnfpormation to get the desired vector
+or paln b. we need to again wit hthe use of the orginal point, get anoterh opiubnt of the proejctor (for instance the locking screw) and now we have 2 points we casn recreate the sdesisresd position of the projection. right?
+Original Cluster Alignment
+In the original Grasshopper cluster, the optical axis was hardcoded:
+Optical Throw Direction: World +Y vector (0, 1, 0)
+PNG
+Lens Shift / Vertical Axis: World +Z vector (0, 0, 1)
+PNG
+Screen Width Axis: World +X vector (1, 0, 0)
+PNG
+Method 1: Transforming the Vector
+Pass the initial vector through the identical transformation pipeline applied to the projector geometry.
+Construct the base forward vector Vector3d(0, 1, 0).
+Apply the same Grasshopper transformation components (Rotate, Move, Orient, or compound Transform matrix) used on the projector body directly to this vector.
+The resulting transformed vector is the exact ProjectorDir pointing along the projector's current optical axis.
+Method 2: Two Points (Plan B)
+Using two points on the projector CAD geometry gives the forward vector:
+vfwd=Pfront−Pback
+Where:
+Pfront is the lens center (ProjectorPt).
+Pback is an axial reference point (e.g., locking screw, mounting center, or rear chassis point aligned with the optical axis).
+Constraints of Two Points
+Pitch and Yaw: Fully resolved by vfwd.
+Roll (Rotation around the optical axis): Unresolved. Two points only constrain 5 degrees of freedom.
+Vertical Reference: If the projector has zero roll (remains upright relative to World Z), the C# component automatically derives the correct screen width and height planes using:
+vright=vfwd×z^,vup=vright×vfwd
+If the projector is rolled around its own optical axis, a 3rd non-collinear point on the chassis is required to construct a true reference plane (Plane 3Pt).
+vector already is corrupted
+The vector is corrupted because Orient transforms positions (points), not pure directions (vectors).
+Why this happens
+When a vector is connected to the geometry input G of Orient, Grasshopper casts it to a Point3d located at that coordinate.
+Orient calculates the coordinate relative to Plane A and maps it to Plane B, applying both rotation and translation.
+The output {38.044437, 118.716449, -51.507614} is a world coordinate point (Plane B's origin + rotated offset), not a directional vector.
+Solution 1: Extract Axes Directly from Plane B (Recommended)
+Since Plane B already represents the target orientation of the projector:
+Connect Plane B to a Deconstruct Plane (DePlane) component.
+The outputs directly provide:
+O (Origin): The exact ProjectorPt.
+Y (Y-Axis): The exact ProjectorDir vector (unitized, rotation-only, no translation error).
+Z (Z-Axis): The vertical orientation vector.
+Wire Plane B directly into the ProjectorPlane input of the C# script, eliminating the need to construct or orient separate vectors.
+Solution 2: Vector Between Two Points
+If using points:
+Connect Plane B Origin (or target lens center point) to input A of a Vector 2Pt (Vec2Pt) component.
+Connect the reoriented point (output G from Orient) to input B.
+Set the Unitize (U) input to True.
+The output is the pure direction vector.
+hold on... I do supply some point, right?
+we already do have a projector point. is ewhere the cone should be constructed. now we jsut need t oknow the ORINTATION of that construction, right? so then we can find its collistion to the lens.
+we need to somehow bind the projection path to the physical dimanesions of the projector. and that should be unique somehow for each projector. I apply several steps of the Orient and Move in my original strategy (when the projectp was loking wotwards Y) . waht is the best solutio nhere and why?
+The best solution is to define a Local Reference Plane (Coordinate Frame) rigidly attached to the projector in its rest position, and pass that plane through the exact same transformation pipeline as the projector CAD geometry.
+Why a Reference Plane is Superior
+Fully Constrains all 6 Degrees of Freedom (6 DOF)
+A Point only provides 3 translations (X,Y,Z); it carries zero rotational data.
+A Vector only provides 2 rotations (pitch and yaw); it has no origin point and loses roll (chassis tilt).
+A Plane encapsulates origin (X,Y,Z) and three orthonormal axes (X,Y,Z), defining position, throw axis, vertical offset direction, and horizontal screen alignment simultaneously.
+Transforms Natively in Grasshopper
+Grasshopper transformation components (Move, Rotate, Rotate Axis, Orient) accept Plane directly into their geometry (G) input.
+Unlike vectors (which corrupt when passed into position-based components like Orient), a Plane transforms rigidly alongside the projector Brep without mathematical distortion.
+Decouples Hardware Dimensions from Scene Placement
+Optical offsets (Offset_Hd, lens center position relative to chassis mounting holes) are defined once in the projector's local rest coordinates.
+Moving or tilting the projector in the scene automatically moves the optical emission vector and screen rectangle with zero manual recalculations.
+Implementation Workflow
+Step 1: Define the Base Rest Plane on the Projector Model
+Before applying any moves or rotations to the projector:
+Place a Plane Normal or construct a plane at the projector's front lens pupil:
+Origin (O): Center of the front optical lens.
+X-Axis (X): Across the projector width (local horizontal).
+Y-Axis (Y): Forward optical throw vector (normal to lens face, pointing out).
+Z-Axis (Z): Projector vertical axis (direction of lens offset Hd).
+Step 2: Pipe the Plane Through the Same Transformations
+If the workflow applies a chain of transforms (e.g., Move → Rotate → Orient):
+Wire both the projector geometry Brep and this Base Plane through each transformation component in parallel.
+Alternatively, feed all transformation matrices into a Compound Transform component and apply the resulting single transform matrix to both the Brep and the Base Plane.
+Step 3: Wire the Transformed Plane into the Script
+Connect the final transformed plane into the C# script's ProjectorPlane input.
+The script derives all required geometry directly from that single plane:
+ProjectorPt = ProjectorPlane.Origin
+Throw Direction = ProjectorPlane.YAxis
+Vertical Offset Direction = ProjectorPlane.ZAxis
+Screen Width Direction = ProjectorPlane.XAxis
+I added asimple Plane normal to the orginial point and then applied all the same transformations - it point t ocompletely different side
+Two distinct errors cause the projection to point in the wrong direction:
+1. The Plane is Never Transformed
+In the Grasshopper canvas, the output P of Plane Normal is wired directly to the script without passing through an Orient component.
+Only the point [x] is connected to the lower Orient components.
+The script receives a transformed origin point, but an untransformed, world-aligned plane.
+Consequently, the cone's apex is placed at the projector, but its optical axis still aims along the default world direction instead of the projector's tilted angle.
+2. Correct Wiring Fix
+Delete the separate point transform: Do not orient the point and plane separately.
+Feed Plane into Orient: Wire output P of Plane Normal into input G (Geometry) of the Orient component.
+Use the Same Source and Target Planes: Ensure inputs A (Source Plane) and B (Target Plane) of that Orient component are identical to the ones used to orient the projector CAD body.
+Wire to Script: Connect the output G of that Orient component into ProjectorPlane on the C# script.
+3. Axis Alignment Verification
+Plane Normal assigns the vector connected to input Z as the plane's local Z-Axis:
+Normal (Z input): Connected to Unit Y (0,1,0) → becomes ProjectorPlane.ZAxis (Optical Throw Axis).
+Local Y-Axis: Defaults to (0,0,1) → becomes ProjectorPlane.YAxis (Vertical Shift Offset_Hd).
+Local X-Axis: Defaults to (1,0,0) → becomes ProjectorPlane.XAxis (Screen Width).
+Once this plane passes through the Orient component, all three axes rotate rigidly with the projector body, aligning the throw vector directly with the lens.
+sooo. we need to wire the same plane for both? or what? can the C# do these all??
+I need to be able to unsestand all you say here. so far I am missing somehing from all of these. we need to redo the code so
+we supply a dot/vector or palne. which wil ldictated all the yaw, pitch and roll to the C# to suscessfully recosntruct the cone . II have ordinginally the projectors (both of them) to be opalce wotwarsd Y diraection. then I used several orinet adn nmoves and now it somehoe somewhere. and both of them 90 degree tlited actually. so what I supply? point>? panel?
+Supply a Plane (ProjectorPlane). Neither a point nor a vector is sufficient.
+Why Point and Vector Fail for a 90° Tilted Projector
+A Point contains only (X,Y,Z) position. It carries zero rotation.
+A Vector only defines forward direction (pitch and yaw). It has zero roll information. When the projector is tilted 90°, a vector cannot communicate whether the long side (Width) or the short side (Height) is vertical, nor which side the offset (Hd) shifts toward.
+A Plane defines all 6 degrees of freedom:
+Origin: Projector lens apex (ProjectorPt).
+Z-Axis: Forward optical throw direction.
+Y-Axis: Projector vertical direction (direction of lens offset Hd).
+X-Axis: Projector horizontal direction (direction of image width).
+Step-by-Step Grasshopper Setup
+Construct the Base Plane at Rest (Before Any Moves/Orients):
+Place a Plane Construct (Pl) or Plane Normal at the original untransformed lens point.
+Set Origin = Original lens point.
+Set X-Axis = World +X (1, 0, 0) (projector width).
+Set Y-Axis = World +Z (0, 0, 1) (projector height/offset).
+Set Z-Axis = World +Y (0, 1, 0) (optical throw direction).
+Transform the Plane with the Geometry:
+Pass this plane through the exact same Orient / Move components used to position the projector CAD body.
+If the projector body is connected to input G of an Orient component, connect this Plane to input G of an identical Orient component with the same A and B inputs.
+Connect to C#:
+Wire the transformed plane output into ProjectorPlane.
+Delete ProjectorPt and ProjectorDir from the C# component. The script extracts both directly from the plane.
+Complete C# Code (Plane-Driven)
+Set the input parameters of the C# component as follows:
+Parameter Name
+Type Hint
+Access
+ProjectorPlane
+Plane
+Item
+LensBrep
+Brep
+Item
+Distance_D
+double
+Item
+Offset_Hd
+double
+Item
+Width
+double
+Item
+Height
+double
+Item
+FocalLength
+double
+Item
+VialDistance
+double
+Item
+NumSampleRays
+int
+Item
+C#
+#region Usings using System; using System.Collections.Generic; using System.Linq; using Rhino; using Rhino.Geometry; using Rhino.Geometry.Intersect; #endregion public class Script_Instance : GH_ScriptInstance { private void RunScript( Plane ProjectorPlane, Brep LensBrep, double Distance_D, double Offset_Hd, double Width, double Height, double FocalLength, double VialDistance, int NumSampleRays, ref object IncidentCone, ref object CollimatedBeam, ref object LensFootprint, ref object RayLines, ref object Info) { List<string> log = new List<string>(); if (!ProjectorPlane.IsValid) { log.Add("ERROR: ProjectorPlane is invalid or unset."); Info = log; return; } if (LensBrep == null || !LensBrep.IsValid) { log.Add("ERROR: LensBrep is null or invalid."); Info = log; return; } // 1. Resolve Parameters & Coordinate Frame Point3d projectorPt = ProjectorPlane.Origin; Vector3d fwd = ProjectorPlane.ZAxis; // Optical throw axis Vector3d up = ProjectorPlane.YAxis; // Vertical offset & height axis Vector3d right = ProjectorPlane.XAxis; // Screen width axis fwd.Unitize(); up.Unitize(); right.Unitize(); double dThrow = (Distance_D > 0) ? Distance_D : 4050.0; double hOffset = (Offset_Hd != 0) ? Offset_Hd : 93.0; double w = (Width > 0) ? Width : 3320.0; double h = (Height > 0) ? Height : 1870.0; double f = (FocalLength > 0) ? FocalLength : 200.0; double vDist = (VialDistance > 0) ? VialDistance : 50.0; int nRays = (NumSampleRays > 2) ? NumSampleRays : 32; double tol = (RhinoDoc.ActiveDoc != null && RhinoDoc.ActiveDoc.ModelAbsoluteTolerance > 0) ? RhinoDoc.ActiveDoc.ModelAbsoluteTolerance : 0.01; tol = Math.Max(tol, 0.001); // 2. Build Screen Rectangle & Frustum Polysurface Point3d targetCenter = projectorPt + (fwd * dThrow) + (up * hOffset); Plane screenPlane = new Plane(targetCenter, right, up); Interval xDom = new Interval(-w * 0.5, w * 0.5); Interval yDom = new Interval(-h * 0.5, h * 0.5); Rectangle3d rect = new Rectangle3d(screenPlane, xDom, yDom); Point3d c0 = rect.Corner(0); Point3d c1 = rect.Corner(1); Point3d c2 = rect.Corner(2); Point3d c3 = rect.Corner(3); List<Brep> pyramidFaces = new List<Brep> { Brep.CreateFromCornerPoints(projectorPt, c0, c1, tol), Brep.CreateFromCornerPoints(projectorPt, c1, c2, tol), Brep.CreateFromCornerPoints(projectorPt, c2, c3, tol), Brep.CreateFromCornerPoints(projectorPt, c3, c0, tol), Brep.CreateFromCornerPoints(c0, c1, c2, c3, tol) }; Brep[] joined = Brep.JoinBreps(pyramidFaces.Where(p => p != null), tol); if (joined == null || joined.Length == 0) { log.Add("ERROR: Could not join frustum Brep."); Info = log; return; } Brep activeCone = joined[0]; // 3. Find Lens Front Face BrepFace frontFace = null; double minDist = double.MaxValue; foreach (BrepFace face in LensBrep.Faces) { double um = (face.Domain(0).Min + face.Domain(0).Max) * 0.5; double vm = (face.Domain(1).Min + face.Domain(1).Max) * 0.5; Point3d ptF = face.PointAt(um, vm); double dist = ptF.DistanceTo(projectorPt); if (dist < minDist) { minDist = dist; frontFace = face; } } if (frontFace == null) { log.Add("ERROR: Could not identify front face of LensBrep."); IncidentCone = activeCone; Info = log; return; } AreaMassProperties amp = AreaMassProperties.Compute(frontFace); double uc = (frontFace.Domain(0).Min + frontFace.Domain(0).Max) * 0.5; double vc = (frontFace.Domain(1).Min + frontFace.Domain(1).Max) * 0.5; Point3d lensCenter = (amp != null) ? amp.Centroid : frontFace.PointAt(uc, vc); Vector3d lensNormal = frontFace.NormalAt(uc, vc); if ((lensNormal * (lensCenter - projectorPt)) < 0) lensNormal.Reverse(); lensNormal.Unitize(); // 4. Intersect Cone with Lens Face (Footprint) Brep faceBrep = frontFace.DuplicateFace(false); Curve[] intCrvs; Point3d[] intPts; Curve footprint = null; if (Intersection.BrepBrep(activeCone, faceBrep, tol, out intCrvs, out intPts) && intCrvs != null && intCrvs.Length > 0) { Curve[] joinedCrvs = Curve.JoinCurves(intCrvs, tol); if (joinedCrvs != null && joinedCrvs.Length > 0) footprint = joinedCrvs[0]; } if (footprint == null) { Brep[] boolRes = Brep.CreateBooleanIntersection(activeCone, LensBrep, tol); if (boolRes != null && boolRes.Length > 0) { Curve[] edges = boolRes[0].DuplicateEdgeCurves(true); Curve[] joinedEdges = Curve.JoinCurves(edges, tol); if (joinedEdges != null && joinedEdges.Length > 0) footprint = joinedEdges[0]; } } if (footprint == null) { log.Add("FAILED: Frustum misses lens. Verify alignment of ProjectorPlane."); IncidentCone = activeCone; // Expose full cone for viewport inspection Info = log; return; } if (!footprint.IsClosed) footprint.MakeClosed(tol); LensFootprint = footprint; // 5. Build Truncated Incident Cone Brep[] incLofts = Brep.CreateFromLoft( new Curve[] { footprint }, projectorPt, Point3d.Unset, LoftType.Normal, false ); if (incLofts != null && incLofts.Length > 0) IncidentCone = incLofts[0].CapPlanarHoles(tol); // 6. Ray Refraction and Collimated Solid double[] tParams = footprint.DivideByCount(nRays, true); if (tParams == null || tParams.Length == 0) { Info = log; return; } List<Point3d> ptsVial = new List<Point3d>(tParams.Length); List<Line> lines = new List<Line>(tParams.Length * 2); List<double> angles = new List<double>(tParams.Length); for (int i = 0; i < tParams.Length; i++) { Point3d pLens = footprint.PointAt(tParams[i]); Vector3d vIn = pLens - projectorPt; double dAxis = vIn * lensNormal; Vector3d vInTrans = vIn - lensNormal * dAxis; Vector3d dr = pLens - lensCenter; Vector3d drTrans = dr - lensNormal * (dr * lensNormal); double dSafe = Math.Max(dAxis, 1e-6); double fSafe = Math.Max(f, 1e-6); Vector3d vOutTrans = (vInTrans * (1.0 / dSafe)) - (drTrans * (1.0 / fSafe)); Vector3d vOut = lensNormal + vOutTrans; vOut.Unitize(); Point3d pVial = pLens + (vOut * vDist); ptsVial.Add(pVial); lines.Add(new Line(projectorPt, pLens)); lines.Add(new Line(pLens, pVial)); double dot = Math.Max(-1.0, Math.Min(1.0, vOut * lensNormal)); angles.Add(Math.Acos(dot) * (180.0 / Math.PI)); } Curve vialCrv = Curve.CreateInterpolatedCurve(ptsVial, 3); if (vialCrv != null) { if (!vialCrv.IsClosed) vialCrv.MakeClosed(tol); Brep[] lofts = Brep.CreateFromLoft( new Curve[] { footprint, vialCrv }, Point3d.Unset, Point3d.Unset, LoftType.Normal, false ); if (lofts != null && lofts.Length > 0) CollimatedBeam = lofts[0].CapPlanarHoles(tol); } RayLines = lines; double avgA = (angles.Count > 0) ? angles.Average() : 0.0; log.Add(string.Format("Distance Projector to Lens: {0:F2} mm", lensCenter.DistanceTo(projectorPt))); log.Add(string.Format("Avg Exit Angle: {0:F3} deg", avgA)); log.Add((avgA < 1.0) ? "Status: COLLIMATED" : "Status: DIVERGING / CONVERGING"); Info = log; } }
+I did. I haad only y x any to set. I applied all transformations - its flipped nopw, no?
+Yes, it is flipped 180° backwards.
+Why It Flipped
+In the Plane (Pl) component:
+X input is unconnected, defaulting to World +X (1, 0, 0).
+Y input is connected to Unit Z (0, 0, 1).
+The resulting plane normal is calculated via the right-hand rule:
+z^=x^×y^=(1,0,0)×(0,0,1)=(0,−1,0)
+The panel in the screenshot confirms Z(0.00, -1.00, 0.00). Because the C# script uses ProjectorPlane.ZAxis as the forward throw axis, the projection cone shoots out of the rear of the projector away from the lens.
+The Fix
+Use Plane Normal instead of Construct Plane, or reverse the X vector.
+Method A: Use Plane Normal (Recommended)
+Replace the Plane (Pl) component with Plane Normal.
+Connect:
+O (Origin): Projector lens origin point.
+Z (Normal): Unit Y vector (0, 1, 0) (optical throw direction).
+Check the panel: the Z vector must read Z(0.00, 1.00, 0.00), not negative.
+Method B: Fix Construct Plane (Pl)
+If keeping the current Plane component:
+Connect a Negative (-x) component to Unit X and feed it into input X (-1, 0, 0).
+Keep Unit Z in input Y (0, 0, 1).
+Calculation:
+z^=(−1,0,0)×(0,0,1)=(0,1,0)
+Pipeline Verification
+Place the corrected base plane at the projector's rest position.
+Route this base plane through the identical Orient / Move components used for the projector CAD body.
+When the projector tilts 90°, the plane tilts 90° with it, keeping screen orientation and throw alignment locked to the chassis.
+Plug the reoriented plane into the C# script's ProjectorPlane input.
+something is still odd. we didnt kinda I feel rotated the projection 90 degree. investigate why. we idnt applied a fildet otr somthing of the CONE. we started to build it on top of the given plne, rioght>? but we need to check may its rotated already? or we beeter build the cone, and then rotate it?? under the hood .whats the better thing here?
+Why the 90° Rotation Was Lost
+When constructing a plane using Plane Normal or Construct Plane with default axes, Grasshopper automatically computes orthogonal vectors aligned with World coordinates. It discards the roll angle (rotation around the optical axis).
+Because the physical projector was rotated 90° into portrait mode:
+The CAD body rolled 90°.
+The plane constructed via Plane Normal remained upright (landscape).
+The script generated a landscape cone for a portrait projector: Width and Height swapped spatial orientations, and the offset Hd shifted sideways relative to the projector chassis instead of upwards.
+Which Architecture is Better: Build on Plane vs. Build at Rest Then Transform
+Building the cone at rest and applying the transformation matrix is the superior method.
+Criterion
+Build on 3D Plane
+Build at Rest + Transform
+Roll Handling
+Fails unless local X and Y axes are tracked manually through all tilts.
+Inherits roll, pitch, yaw, and translation with zero error.
+Axis Definition
+Requires dynamic recalculation of forward, up, and right vectors in 3D world space.
+Trivial: Optical axis is fixed to +Y, offset to +Z, width to +X.
+Grasshopper Overhead
+Requires managing plane construction components and orientation checks.
+Direct: Uses the transformation matrix (X output) already generated by the Orient component.
+Implementation: Transform Matrix in C#
+The Orient component outputs the 4×4 affine transformation matrix from its X output pin. Supplying this transformation directly to the C# component eliminates the need to construct planes manually. The script builds the cone at rest and transforms it using that matrix.
+Component Inputs
+Name
+Type Hint
+Access
+Source
+RestPt
+Point3d
+Item
+Lens apex point on the projector before transformation
+LensBrep
+Brep
+Item
+Transformed lens in final scene position
+XForm
+Transform
+Item
+Output X from the final Orient component
+Distance_D
+double
+Item
+Throw distance (e.g. 4050.0)
+Offset_Hd
+double
+Item
+Vertical offset (e.g. 93.0)
+Width
+double
+Item
+Screen width (e.g. 3320.0)
+Height
+double
+Item
+Screen height (e.g. 1870.0)
+FocalLength
+double
+Item
+Collimation lens datasheet focal length
+VialDistance
+double
+Item
+Distance from lens to vial
+NumSampleRays
+int
+Item
+Discretization count
+C#
+#region Usings using System; using System.Collections.Generic; using System.Linq; using Rhino; using Rhino.Geometry; using Rhino.Geometry.Intersect; #endregion public class Script_Instance : GH_ScriptInstance { private void RunScript( Point3d RestPt, Brep LensBrep, Transform XForm, double Distance_D, double Offset_Hd, double Width, double Height, double FocalLength, double VialDistance, int NumSampleRays, ref object IncidentCone, ref object CollimatedBeam, ref object LensFootprint, ref object RayLines, ref object Info) { List<string> log = new List<string>(); if (!RestPt.IsValid || LensBrep == null || !LensBrep.IsValid) { log.Add("ERROR: Invalid RestPt or LensBrep."); Info = log; return; } double dThrow = (Distance_D > 0) ? Distance_D : 4050.0; double hOffset = (Offset_Hd != 0) ? Offset_Hd : 93.0; double w = (Width > 0) ? Width : 3320.0; double h = (Height > 0) ? Height : 1870.0; double f = (FocalLength > 0) ? FocalLength : 200.0; double vDist = (VialDistance > 0) ? VialDistance : 50.0; int nRays = (NumSampleRays > 2) ? NumSampleRays : 32; double tol = (RhinoDoc.ActiveDoc != null && RhinoDoc.ActiveDoc.ModelAbsoluteTolerance > 0) ? RhinoDoc.ActiveDoc.ModelAbsoluteTolerance : 0.01; tol = Math.Max(tol, 0.001); // 1. Build Canonical Frustum at Rest (+Y Throw, +Z Shift, +X Width) Point3d restTarget = RestPt + new Vector3d(0.0, dThrow, hOffset); Plane restScreenPlane = new Plane(restTarget, Vector3d.XAxis, Vector3d.ZAxis); Interval xDom = new Interval(-w * 0.5, w * 0.5); Interval yDom = new Interval(-h * 0.5, h * 0.5); Rectangle3d rect = new Rectangle3d(restScreenPlane, xDom, yDom); Point3d c0 = rect.Corner(0); Point3d c1 = rect.Corner(1); Point3d c2 = rect.Corner(2); Point3d c3 = rect.Corner(3); List<Brep> pyramidFaces = new List<Brep> { Brep.CreateFromCornerPoints(RestPt, c0, c1, tol), Brep.CreateFromCornerPoints(RestPt, c1, c2, tol), Brep.CreateFromCornerPoints(RestPt, c2, c3, tol), Brep.CreateFromCornerPoints(RestPt, c3, c0, tol), Brep.CreateFromCornerPoints(c0, c1, c2, c3, tol) }; Brep[] joined = Brep.JoinBreps(pyramidFaces.Where(p => p != null), tol); if (joined == null || joined.Length == 0) { log.Add("ERROR: Failed to join canonical frustum."); Info = log; return; } Brep activeCone = joined[0]; Point3d projectorPt = RestPt; // 2. Apply Rigid Transformation if (XForm.IsValid && XForm != Transform.Identity) { activeCone.Transform(XForm); projectorPt.Transform(XForm); } // 3. Locate Lens Front Face BrepFace frontFace = null; double minDist = double.MaxValue; foreach (BrepFace face in LensBrep.Faces) { double um = (face.Domain(0).Min + face.Domain(0).Max) * 0.5; double vm = (face.Domain(1).Min + face.Domain(1).Max) * 0.5; Point3d ptF = face.PointAt(um, vm); double dist = ptF.DistanceTo(projectorPt); if (dist < minDist) { minDist = dist; frontFace = face; } } if (frontFace == null) { log.Add("ERROR: Could not isolate front face on LensBrep."); IncidentCone = activeCone; Info = log; return; } AreaMassProperties amp = AreaMassProperties.Compute(frontFace); double uc = (frontFace.Domain(0).Min + frontFace.Domain(0).Max) * 0.5; double vc = (frontFace.Domain(1).Min + frontFace.Domain(1).Max) * 0.5; Point3d lensCenter = (amp != null) ? amp.Centroid : frontFace.PointAt(uc, vc); Vector3d lensNormal = frontFace.NormalAt(uc, vc); if ((lensNormal * (lensCenter - projectorPt)) < 0) lensNormal.Reverse(); lensNormal.Unitize(); // 4. Intersect Cone with Lens Face Brep faceBrep = frontFace.DuplicateFace(false); Curve[] intCrvs; Point3d[] intPts; Curve footprint = null; if (Intersection.BrepBrep(activeCone, faceBrep, tol, out intCrvs, out intPts) && intCrvs != null && intCrvs.Length > 0) { Curve[] joinedCrvs = Curve.JoinCurves(intCrvs, tol); if (joinedCrvs != null && joinedCrvs.Length > 0) footprint = joinedCrvs[0]; } if (footprint == null) { Brep[] boolRes = Brep.CreateBooleanIntersection(activeCone, LensBrep, tol); if (boolRes != null && boolRes.Length > 0) { Curve[] edges = boolRes[0].DuplicateEdgeCurves(true); Curve[] joinedEdges = Curve.JoinCurves(edges, tol); if (joinedEdges != null && joinedEdges.Length > 0) footprint = joinedEdges[0]; } } if (footprint == null) { log.Add("FAILED: Frustum misses lens after transformation."); IncidentCone = activeCone; Info = log; return; } if (!footprint.IsClosed) footprint.MakeClosed(tol); LensFootprint = footprint; // 5. Truncate Incident Cone to Lens Face Brep[] incLofts = Brep.CreateFromLoft( new Curve[] { footprint }, projectorPt, Point3d.Unset, LoftType.Normal, false ); if (incLofts != null && incLofts.Length > 0) IncidentCone = incLofts[0].CapPlanarHoles(tol); // 6. Ray Tracing and Collimated Solid double[] tParams = footprint.DivideByCount(nRays, true); if (tParams == null || tParams.Length == 0) { Info = log; return; } List<Point3d> ptsVial = new List<Point3d>(tParams.Length); List<Line> lines = new List<Line>(tParams.Length * 2); List<double> angles = new List<double>(tParams.Length); for (int i = 0; i < tParams.Length; i++) { Point3d pLens = footprint.PointAt(tParams[i]); Vector3d vIn = pLens - projectorPt; double dAxis = vIn * lensNormal; Vector3d vInTrans = vIn - lensNormal * dAxis; Vector3d dr = pLens - lensCenter; Vector3d drTrans = dr - lensNormal * (dr * lensNormal); double dSafe = Math.Max(dAxis, 1e-6); double fSafe = Math.Max(f, 1e-6); Vector3d vOutTrans = (vInTrans * (1.0 / dSafe)) - (drTrans * (1.0 / fSafe)); Vector3d vOut = lensNormal + vOutTrans; vOut.Unitize(); Point3d pVial = pLens + (vOut * vDist); ptsVial.Add(pVial); lines.Add(new Line(projectorPt, pLens)); lines.Add(new Line(pLens, pVial)); double dot = Math.Max(-1.0, Math.Min(1.0, vOut * lensNormal)); angles.Add(Math.Acos(dot) * (180.0 / Math.PI)); } Curve vialCrv = Curve.CreateInterpolatedCurve(ptsVial, 3); if (vialCrv != null) { if (!vialCrv.IsClosed) vialCrv.MakeClosed(tol); Brep[] lofts = Brep.CreateFromLoft( new Curve[] { footprint, vialCrv }, Point3d.Unset, Point3d.Unset, LoftType.Normal, false ); if (lofts != null && lofts.Length > 0) CollimatedBeam = lofts[0].CapPlanarHoles(tol); } RayLines = lines; double avgA = (angles.Count > 0) ? angles.Average() : 0.0; log.Add(string.Format("Distance Projector to Lens: {0:F2} mm", lensCenter.DistanceTo(projectorPt))); log.Add(string.Format("Avg Exit Angle: {0:F3} deg", avgA)); log.Add((avgA < 1.0) ? "Status: COLLIMATED" : "Status: DIVERGING / CONVERGING"); Info = log; } }
+now I am completely lost. so we supply the point of the lense and then by default its making iot to look to the Y, and if we suply an OPTIOON trabnsforms we can move whenever we need, right>?>????
+Yes.
+How It Works
+Default State (At Rest)
+Built at RestPt (the original lens point on the CAD model before any movement).
+Automatically projects forward along World +Y, shifts vertically along +Z, and sets width along +X. This mirrors the original cluster setup.
+If XForm is left disconnected or empty, the cone remains in this default orientation.
+Transformed State (With XForm)
+The script builds the cone at rest, then multiplies every vertex and the origin point by the 4×4 affine transformation matrix supplied to XForm.
+Translation, pitch, yaw, and 90° roll tilt are transferred from the projector geometry to the projection cone.
+Grasshopper Wiring
+RestPt: The lens point of the projector in its initial position (before Orient or Move).
+XForm: Connect directly to output X of the final Orient component that positions the projector.
+LensBrep: The physical lens Brep in its final scene position.
+this dosent sound clever to me. Do this instead - mathematiclly found FROM THE PREVIOUS VERSION OF THE CODE where we supplied a PLane normal how the projector is alighend. that should be easy to do. or not?
+if not possible what AUTOMATIC way we can come up with to do so it would definintely know which side the oproject is curerntly lyuing?
+A plane constructed strictly from a point and a normal vector (Plane Normal) mathematically cannot determine the roll angle. A normal vector defines only 2 rotational degrees of freedom (pitch and yaw). Rhino computes the remaining two orthogonal axes (X and Y) by crossing the normal with an arbitrary world axis (typically World Z). If the physical projector rolls 90° around its optical axis, the normal vector does not change, causing the roll information to be erased.
+The Fully Automatic Solution: Extract the Plane from ProjectorBrep
+To determine the exact orientation (pitch, yaw, and 90° roll) without manual transforms or rest points, pass the Projector CAD Brep directly into the script.
+The projector geometry physically contains its own coordinate system:
+Optical Axis (Z): The surface normal of the front lens face (or the face closest to the lens apex).
+Chassis Up-Vector (Y): The direction along the short dimension of the front face (or the local vertical edge of the projector chassis).
+Chassis Right-Vector (X): The cross product of the Optical Axis and the Chassis Up-Vector.
+Grasshopper Method: Extract Plane Directly from the CAD Face
+Before using C#, this can be resolved natively on the canvas:
+Connect the transformed projector CAD body to a Deconstruct Brep component.
+Filter the faces using List Item to pick the front flat face surrounding the lens.
+Connect that face to an Evaluate Surface component evaluated at {0.5,0.5} (with surface reparameterized).
+The output Frame of Evaluate Surface is the true local plane:
+The frame normal points along the optical throw.
+The frame U and V tangent vectors point along the chassis width and height, preserving the 90° roll.
+Wire that frame directly into ProjectorPlane.
+C# Automated Implementation (Takes ProjectorBrep Directly)
+This script takes the projector CAD solid (ProjectorBrep), isolates the front optical face, derives the local coordinate system including roll, and builds the cone to the lens.
+Inputs Setup
+Parameter Name
+Type Hint
+Description
+ProjectorBrep
+Brep
+The projector CAD body in its final 3D scene position.
+LensBrep
+Brep
+The collimating lens in its final 3D scene position.
+Distance_D
+double
+Throw distance (e.g. 4050.0).
+Offset_Hd
+double
+Optical vertical offset (e.g. 93.0).
+Width
+double
+Projected screen width (e.g. 3320.0).
+Height
+double
+Projected screen height (e.g. 1870.0).
+FocalLength
+double
+Lens focal length (e.g. 200.0).
+VialDistance
+double
+Distance from lens to vial (e.g. 50.0).
+NumSampleRays
+int
+Ray count (e.g. 32).
+C#
+#region Usings using System; using System.Collections.Generic; using System.Linq; using Rhino; using Rhino.Geometry; using Rhino.Geometry.Intersect; #endregion public class Script_Instance : GH_ScriptInstance { private void RunScript( Brep ProjectorBrep, Brep LensBrep, double Distance_D, double Offset_Hd, double Width, double Height, double FocalLength, double VialDistance, int NumSampleRays, ref object IncidentCone, ref object CollimatedBeam, ref object LensFootprint, ref object RayLines, ref object Info) { List<string> log = new List<string>(); if (ProjectorBrep == null || !ProjectorBrep.IsValid) { log.Add("ERROR: ProjectorBrep is null or invalid."); Info = log; return; } if (LensBrep == null || !LensBrep.IsValid) { log.Add("ERROR: LensBrep is null or invalid."); Info = log; return; } double dThrow = (Distance_D > 0) ? Distance_D : 4050.0; double hOffset = (Offset_Hd != 0) ? Offset_Hd : 93.0; double w = (Width > 0) ? Width : 3320.0; double h = (Height > 0) ? Height : 1870.0; double f = (FocalLength > 0) ? FocalLength : 200.0; double vDist = (VialDistance > 0) ? VialDistance : 50.0; int nRays = (NumSampleRays > 2) ? NumSampleRays : 32; double tol = (RhinoDoc.ActiveDoc != null && RhinoDoc.ActiveDoc.ModelAbsoluteTolerance > 0) ? RhinoDoc.ActiveDoc.ModelAbsoluteTolerance : 0.01; tol = Math.Max(tol, 0.001); // --------------------------------------------------------------------- // 1. Automatically Deduce Projector Optical Axis & Roll from Chassis // --------------------------------------------------------------------- BoundingBox lensBBox = LensBrep.GetBoundingBox(true); Point3d lensCenterEstimate = lensBBox.Center; // Find the front face of the projector (closest face pointing towards the lens) BrepFace projFrontFace = null; double minFaceDist = double.MaxValue; foreach (BrepFace face in ProjectorBrep.Faces) { double um = (face.Domain(0).Min + face.Domain(0).Max) * 0.5; double vm = (face.Domain(1).Min + face.Domain(1).Max) * 0.5; Point3d pt = face.PointAt(um, vm); double d = pt.DistanceTo(lensCenterEstimate); if (d < minFaceDist) { minFaceDist = d; projFrontFace = face; } } if (projFrontFace == null) { log.Add("ERROR: Could not find projector front face."); Info = log; return; } // Evaluate surface frame at midpoint to capture native U/V tangents (Roll) double uMid = (projFrontFace.Domain(0).Min + projFrontFace.Domain(0).Max) * 0.5; double vMid = (projFrontFace.Domain(1).Min + projFrontFace.Domain(1).Max) * 0.5; Point3d projectorPt = projFrontFace.PointAt(uMid, vMid); Vector3d fwd = projFrontFace.NormalAt(uMid, vMid); // Ensure normal points outward towards the lens BoundingBox projBBox = ProjectorBrep.GetBoundingBox(true); if ((fwd * (projectorPt - projBBox.Center)) < 0) fwd.Reverse(); fwd.Unitize(); // Extract frame tangents Plane localFrame; projFrontFace.FrameAt(uMid, vMid, out localFrame); Vector3d axisU = localFrame.XAxis; Vector3d axisV = localFrame.YAxis; // Identify local height vs width based on front face bounding domain Vector3d up, right; if (projFrontFace.Domain(0).Length >= projFrontFace.Domain(1).Length) { right = axisU; up = axisV; } else { right = axisV; up = axisU; } right.Unitize(); up.Unitize(); // Ensure right-handed orthogonal system with forward vector right = Vector3d.CrossProduct(up, fwd); right.Unitize(); up = Vector3d.CrossProduct(fwd, right); up.Unitize(); // --------------------------------------------------------------------- // 2. Synthesize Oriented Frustum // --------------------------------------------------------------------- Point3d screenCenter = projectorPt + (fwd * dThrow) + (up * hOffset); Plane screenPlane = new Plane(screenCenter, right, up); Interval xDom = new Interval(-w * 0.5, w * 0.5); Interval yDom = new Interval(-h * 0.5, h * 0.5); Rectangle3d rect = new Rectangle3d(screenPlane, xDom, yDom); Point3d c0 = rect.Corner(0); Point3d c1 = rect.Corner(1); Point3d c2 = rect.Corner(2); Point3d c3 = rect.Corner(3); List<Brep> pyramidFaces = new List<Brep> { Brep.CreateFromCornerPoints(projectorPt, c0, c1, tol), Brep.CreateFromCornerPoints(projectorPt, c1, c2, tol), Brep.CreateFromCornerPoints(projectorPt, c2, c3, tol), Brep.CreateFromCornerPoints(projectorPt, c3, c0, tol), Brep.CreateFromCornerPoints(c0, c1, c2, c3, tol) }; Brep[] joined = Brep.JoinBreps(pyramidFaces.Where(p => p != null), tol); if (joined == null || joined.Length == 0) { log.Add("ERROR: Failed to join frustum Brep."); Info = log; return; } Brep activeCone = joined[0]; // --------------------------------------------------------------------- // 3. Locate Lens Front Face & Footprint // --------------------------------------------------------------------- BrepFace frontLensFace = null; double minLensDist = double.MaxValue; foreach (BrepFace face in LensBrep.Faces) { double um = (face.Domain(0).Min + face.Domain(0).Max) * 0.5; double vm = (face.Domain(1).Min + face.Domain(1).Max) * 0.5; Point3d ptF = face.PointAt(um, vm); double dist = ptF.DistanceTo(projectorPt); if (dist < minLensDist) { minLensDist = dist; frontLensFace = face; } } if (frontLensFace == null) { IncidentCone = activeCone; Info = log; return; } AreaMassProperties amp = AreaMassProperties.Compute(frontLensFace); double uc = (frontLensFace.Domain(0).Min + frontLensFace.Domain(0).Max) * 0.5; double vc = (frontLensFace.Domain(1).Min + frontLensFace.Domain(1).Max) * 0.5; Point3d lensCenter = (amp != null) ? amp.Centroid : frontLensFace.PointAt(uc, vc); Vector3d lensNormal = frontLensFace.NormalAt(uc, vc); if ((lensNormal * (lensCenter - projectorPt)) < 0) lensNormal.Reverse(); lensNormal.Unitize(); Brep faceBrep = frontLensFace.DuplicateFace(false); Curve[] intCrvs; Point3d[] intPts; Curve footprint = null; if (Intersection.BrepBrep(activeCone, faceBrep, tol, out intCrvs, out intPts) && intCrvs != null && intCrvs.Length > 0) { Curve[] joinedCrvs = Curve.JoinCurves(intCrvs, tol); if (joinedCrvs != null && joinedCrvs.Length > 0) footprint = joinedCrvs[0]; } if (footprint == null) { Brep[] boolRes = Brep.CreateBooleanIntersection(activeCone, LensBrep, tol); if (boolRes != null && boolRes.Length > 0) { Curve[] edges = boolRes[0].DuplicateEdgeCurves(true); Curve[] joinedEdges = Curve.JoinCurves(edges, tol); if (joinedEdges != null && joinedEdges.Length > 0) footprint = joinedEdges[0]; } } if (footprint == null) { log.Add("FAILED: Frustum misses lens. Verify projector aim."); IncidentCone = activeCone; Info = log; return; } if (!footprint.IsClosed) footprint.MakeClosed(tol); LensFootprint = footprint; // --------------------------------------------------------------------- // 4. Truncate Cone to Lens Face // --------------------------------------------------------------------- Brep[] incLofts = Brep.CreateFromLoft( new Curve[] { footprint }, projectorPt, Point3d.Unset, LoftType.Normal, false ); if (incLofts != null && incLofts.Length > 0) IncidentCone = incLofts[0].CapPlanarHoles(tol); // --------------------------------------------------------------------- // 5. Ray Refraction and Collimation Solid // --------------------------------------------------------------------- double[] tParams = footprint.DivideByCount(nRays, true); if (tParams == null || tParams.Length == 0) { Info = log; return; } List<Point3d> ptsVial = new List<Point3d>(tParams.Length); List<Line> lines = new List<Line>(tParams.Length * 2); List<double> angles = new List<double>(tParams.Length); for (int i = 0; i < tParams.Length; i++) { Point3d pLens = footprint.PointAt(tParams[i]); Vector3d vIn = pLens - projectorPt; double dAxis = vIn * lensNormal; Vector3d vInTrans = vIn - lensNormal * dAxis; Vector3d dr = pLens - lensCenter; Vector3d drTrans = dr - lensNormal * (dr * lensNormal); double dSafe = Math.Max(dAxis, 1e-6); double fSafe = Math.Max(f, 1e-6); Vector3d vOutTrans = (vInTrans * (1.0 / dSafe)) - (drTrans * (1.0 / fSafe)); Vector3d vOut = lensNormal + vOutTrans; vOut.Unitize(); Point3d pVial = pLens + (vOut * vDist); ptsVial.Add(pVial); lines.Add(new Line(projectorPt, pLens)); lines.Add(new Line(pLens, pVial)); double dot = Math.Max(-1.0, Math.Min(1.0, vOut * lensNormal)); angles.Add(Math.Acos(dot) * (180.0 / Math.PI)); } Curve vialCrv = Curve.CreateInterpolatedCurve(ptsVial, 3); if (vialCrv != null) { if (!vialCrv.IsClosed) vialCrv.MakeClosed(tol); Brep[] lofts = Brep.CreateFromLoft( new Curve[] { footprint, vialCrv }, Point3d.Unset, Point3d.Unset, LoftType.Normal, false ); if (lofts != null && lofts.Length > 0) CollimatedBeam = lofts[0].CapPlanarHoles(tol); } RayLines = lines; double avgA = (angles.Count > 0) ? angles.Average() : 0.0; log.Add(string.Format("Distance Projector to Lens: {0:F2} mm", lensCenter.DistanceTo(projectorPt))); log.Add(string.Format("Avg Exit Angle: {0:F3} deg", avgA)); log.Add((avgA < 1.0) ? "Status: COLLIMATED" : "Status: DIVERGING / CONVERGING"); Info = log; } }
+Gemini is AI and can make mistakes, including about people. [Your privacy & GeminiOpens in a new window](https://support.google.com/gemini?p=privacy_notice)
+Automating Optical Axis Extraction"
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-10-05T15:50:51+03:00.
+</ADDITIONAL_METADATA>
